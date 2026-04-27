@@ -14,14 +14,14 @@ export async function POST(req: Request) {
     const prompt = `Analiza la siguiente metadata operativa y genera el reporte forense:\n\n${JSON.stringify(rawData)}`;
     
     const result = await forensicModel.generateContent({
-      model: "gemini-1.5-flash",
       contents: [
         { role: "user", parts: [{ text: SYSTEM_PROMPT_FORENSIC + "\n\n" + prompt }] }
       ],
-      config: { responseMimeType: "application/json" }
+      generationConfig: { responseMimeType: "application/json" }
     });
 
-    const responseText = result.text ?? "{}";
+    const response = await result.response;
+    const responseText = response.text();
     const forensicData = JSON.parse(responseText);
 
     // 2. Persist to Supabase

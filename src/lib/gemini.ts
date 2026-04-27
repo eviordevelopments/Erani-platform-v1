@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy-gemini-key" });
 
-export const forensicModel = genAI.models;
+export const forensicModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 export const SYSTEM_PROMPT_FORENSIC = `
 Eres un Auditor Forense Digital de nivel experto de ERANI. 

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   // Prevent ESLint warnings from failing CI builds on Netlify
   eslint: {
     ignoreDuringBuilds: true,
