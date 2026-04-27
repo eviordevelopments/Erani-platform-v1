@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy-gemini-key" });
 
 export const forensicModel = genAI.models;
 
