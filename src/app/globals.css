@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0A0E14;
+  --foreground: #F9FAFB;
+  --card-bg: rgba(10, 14, 20, 0.6);
+  --accent-blue: #0055A0;
+  --accent-purple: #9e80ff;
+  --accent-coral: #FF5C5C;
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --nav-text: rgba(255, 255, 255, 0.5);
+  --logo-filter: brightness(0) invert(1);
+  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.light {
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --accent-blue: #0055A0;
+  --accent-purple: #7000FF; 
+  --glass-border: rgba(15, 23, 42, 0.12); 
+  --nav-text: rgba(15, 23, 42, 0.7);
+  --logo-filter: brightness(0);
+  --card-shadow: 0 8px 32px 0 rgba(15, 23, 42, 0.08);
+}
+
+html {
+  font-size: var(--platform-font-size, 16px);
+}
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-erani-blue: var(--accent-blue);
+  --color-erani-purple: var(--accent-purple);
+  --color-erani-coral: var(--accent-coral);
+  --font-sans: 'Montserrat', system-ui, -apple-system, sans-serif;
+  --color-glass-border: var(--glass-border);
+  --color-nav-text: var(--nav-text);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  margin: 0;
+}
+
+/* Glassmorphism Utility - Now uses CSS variables for border and bg */
+.glassmorphism {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 1rem;
+  background-color: var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+
+/* Brand Text Gradients */
+.text-gradient-brand {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-image: linear-gradient(to right, var(--accent-blue), var(--accent-purple));
+}
+
+.brand-light-flow {
+  background: linear-gradient(90deg, #7000FF, #9e80ff, #7000FF);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: brand-glow 3s linear infinite;
+  font-weight: 900;
+  display: inline-block;
+}
+
+/* Premium Button */
+.button-premium {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+  box-shadow: 0 4px 15px rgba(0, 85, 160, 0.3);
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  color: white !important;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 500;
+}
+
+.button-premium:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 10px 30px rgba(158, 128, 255, 0.4);
+}
+
+.logo-adaptive {
+  transition: filter 0.3s ease;
+  filter: var(--logo-filter);
+}
+
+.bg-blob-purple {
+  @apply fixed -z-10 blur-[150px] rounded-full pointer-events-none;
+  background-color: #9e80ff;
+  opacity: 0.15;
+}
+
+.bg-blob-blue {
+  @apply fixed -z-10 blur-[150px] rounded-full pointer-events-none;
+  background-color: #0055A0;
+  opacity: 0.08;
+}
+
+/* Modern Input Style */
+.input-premium {
+  @apply bg-white/5 dark:bg-black/20 border border-white/20 dark:border-white/5 rounded-2xl px-6 py-4 text-sm font-bold focus:outline-none focus:border-erani-blue transition-all placeholder:text-gray-500 text-foreground w-full shadow-inner;
+}
+
+.textarea-premium {
+  @apply bg-white/5 dark:bg-black/20 border border-white/20 dark:border-white/5 rounded-2xl px-6 py-4 text-sm font-bold focus:outline-none focus:border-erani-blue transition-all placeholder:text-gray-500 text-foreground w-full shadow-inner resize-none;
+}
+
+.select-premium {
+  @apply bg-white/5 dark:bg-black/20 border border-white/20 dark:border-white/5 rounded-2xl px-6 py-4 text-sm font-bold focus:outline-none focus:border-erani-blue transition-all text-foreground w-full shadow-inner appearance-none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239CA3AF'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1.5rem center;
+  background-size: 1.2rem 1.2rem;
+  padding-right: 3.5rem;
+}
+
+@keyframes border-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes rotate-border {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.premium-border-container {
+  position: relative;
+  border-radius: 2rem;
+  overflow: hidden;
+  padding: 1.5px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 85, 160, 0.1);
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.premium-border-container:focus-within {
+  box-shadow: 0 15px 50px -10px rgba(0, 0, 0, 0.6), 0 0 30px rgba(0, 85, 160, 0.3);
+  transform: translateY(-2px);
+}
+
+.premium-border-container::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 250%;
+  height: 250%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    #0055A0 90deg,
+    #9e80ff 180deg,
+    #0055A0 270deg,
+    transparent 360deg
+  );
+  animation: rotate-border 15s linear infinite;
+  z-index: 0;
+  opacity: 0.08;
+  transition: opacity 0.8s ease;
+  filter: blur(10px);
+}
+
+.premium-border-container:focus-within::before {
+  opacity: 0.4;
+  animation-duration: 10s;
+}
+
+.premium-border-inner {
+  position: relative;
+  z-index: 1;
+  background: var(--background);
+  border-radius: calc(2rem - 1.5px);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+

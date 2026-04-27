@@ -1,0 +1,103 @@
+[
+  {
+    "client_msg_id": "slack-001",
+    "type": "message",
+    "text": "Hola equipo, ¿alguien puede agregar también la vista de exportación de datos? El cliente la necesita para el lunes",
+    "user": "U01CARLOS",
+    "username": "carlos.mendez",
+    "ts": "1705312800.000100"
+  },
+  {
+    "client_msg_id": "slack-002",
+    "type": "message",
+    "text": "El sprint está yendo bien, completamos ERANI-5 y ERANI-11 antes de tiempo",
+    "user": "U02ANA",
+    "username": "ana.torres",
+    "ts": "1705316400.000200",
+    "reactions": [{ "name": "white_check_mark", "count": 3 }]
+  },
+  {
+    "client_msg_id": "slack-003",
+    "type": "message",
+    "text": "Nuevo requerimiento del cliente: necesitan que también se integre con Google Analytics. No estaba en el plan original",
+    "user": "U01CARLOS",
+    "username": "carlos.mendez",
+    "ts": "1705320000.000300"
+  },
+  {
+    "client_msg_id": "slack-004",
+    "type": "message",
+    "text": "¿Cuál es el tiempo estimado para ERANI-12? Parece que nadie le puso estimate",
+    "user": "U03LUIS",
+    "username": "luis.garcia",
+    "ts": "1705323600.000400"
+  },
+  {
+    "client_msg_id": "slack-005",
+    "type": "message",
+    "text": "Daily sync completado. Bloqueadores: acceso a ambiente de staging",
+    "user": "U04MARIA",
+    "username": "maria.lopez",
+    "ts": "1705327200.000500",
+    "reactions": [{ "name": "+1", "count": 2 }]
+  },
+  {
+    "client_msg_id": "slack-006",
+    "type": "message",
+    "text": "Y si también incluimos un módulo de analytics nativo, creo que el cliente valoraría eso",
+    "user": "U01CARLOS",
+    "username": "carlos.mendez",
+    "ts": "1705330800.000600"
+  },
+  {
+    "client_msg_id": "slack-007",
+    "type": "message",
+    "text": "Retroalimentación del QA: el flujo de registro tiene 3 defectos críticos",
+    "user": "U03LUIS",
+    "username": "luis.garcia",
+    "ts": "1705334400.000700",
+    "reactions": [{ "name": "alert", "count": 1 }]
+  },
+  {
+    "client_msg_id": "slack-008",
+    "type": "message",
+    "text": "El cliente pregunta si podemos también agregar notificaciones push. Fuera de alcance pero quieren que lo veamos",
+    "user": "U02ANA",
+    "username": "ana.torres",
+    "ts": "1705338000.000800"
+  },
+  {
+    "client_msg_id": "slack-009",
+    "type": "message",
+    "text": "Código de ERANI-7 listo para revisión en PR #45",
+    "user": "U04MARIA",
+    "username": "maria.lopez",
+    "ts": "1705341600.000900",
+    "reactions": [{ "name": "eyes", "count": 2 }]
+  },
+  {
+    "client_msg_id": "slack-010",
+    "type": "message",
+    "text": "Recordatorio: planning mañana a las 10am. Traigan sus estimaciones actualizadas",
+    "user": "U01CARLOS",
+    "username": "carlos.mendez",
+    "ts": "1705345200.001000"
+  },
+  {
+    "client_msg_id": "slack-011",
+    "type": "message",
+    "text": "Cambio de alcance confirmado por el cliente: añadir soporte multiidioma. Necesitamos tiempo estimado",
+    "user": "U03LUIS",
+    "username": "luis.garcia",
+    "ts": "1705348800.001100"
+  },
+  {
+    "client_msg_id": "slack-012",
+    "type": "message",
+    "text": "Merge completado en main. Deploy en staging exitoso ✅",
+    "user": "U04MARIA",
+    "username": "maria.lopez",
+    "ts": "1705352400.001200",
+    "reactions": [{ "name": "rocket", "count": 5 }]
+  }
+]

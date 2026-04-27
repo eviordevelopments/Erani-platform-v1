@@ -1,0 +1,203 @@
+{
+  "expand": "schema,names,operations,editmeta,changelog,versionedRepresentations",
+  "startAt": 0,
+  "maxResults": 25,
+  "total": 18,
+  "issues": [
+    {
+      "id": "10001",
+      "key": "ERANI-1",
+      "fields": {
+        "summary": "Implementar módulo de autenticación con OAuth",
+        "status": { "name": "Done" },
+        "priority": { "name": "High" },
+        "assignee": { "displayName": "Carlos Méndez" },
+        "timeoriginalestimate": 14400,
+        "timespent": 18000,
+        "created": "2024-01-10T09:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10002",
+      "key": "ERANI-2",
+      "fields": {
+        "summary": "Dashboard de métricas financieras — agregar vista de rentabilidad",
+        "status": { "name": "In Progress" },
+        "priority": { "name": "High" },
+        "assignee": { "displayName": "Ana Torres" },
+        "timeoriginalestimate": 0,
+        "timespent": 25200,
+        "created": "2024-01-12T10:30:00.000+0000"
+      }
+    },
+    {
+      "id": "10003",
+      "key": "ERANI-3",
+      "fields": {
+        "summary": "Refactor del pipeline de ingesta de metadatos",
+        "status": { "name": "To Do" },
+        "priority": { "name": "Medium" },
+        "assignee": null,
+        "timeoriginalestimate": 0,
+        "timespent": 0,
+        "created": "2024-01-14T08:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10004",
+      "key": "ERANI-4",
+      "fields": {
+        "summary": "Nuevo requerimiento: integrar Stripe para pagos recurrentes",
+        "status": { "name": "To Do" },
+        "priority": { "name": "Critical" },
+        "assignee": { "displayName": "Luis García" },
+        "timeoriginalestimate": 0,
+        "timespent": 0,
+        "created": "2024-01-15T11:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10005",
+      "key": "ERANI-5",
+      "fields": {
+        "summary": "Optimización de consultas PostgreSQL en reportes",
+        "status": { "name": "Done" },
+        "priority": { "name": "Low" },
+        "assignee": { "displayName": "Carlos Méndez" },
+        "timeoriginalestimate": 7200,
+        "timespent": 5400,
+        "created": "2024-01-16T09:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10006",
+      "key": "ERANI-6",
+      "fields": {
+        "summary": "También podría agregar modo oscuro al portal del cliente",
+        "status": { "name": "To Do" },
+        "priority": { "name": "Low" },
+        "assignee": null,
+        "timeoriginalestimate": 0,
+        "timespent": 0,
+        "created": "2024-01-17T14:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10007",
+      "key": "ERANI-7",
+      "fields": {
+        "summary": "Configurar CI/CD pipeline con GitHub Actions",
+        "status": { "name": "In Progress" },
+        "priority": { "name": "High" },
+        "assignee": { "displayName": "María López" },
+        "timeoriginalestimate": 10800,
+        "timespent": 3600,
+        "created": "2024-01-18T08:30:00.000+0000"
+      }
+    },
+    {
+      "id": "10008",
+      "key": "ERANI-8",
+      "fields": {
+        "summary": "Documentación de la API REST v2",
+        "status": { "name": "To Do" },
+        "priority": { "name": "Medium" },
+        "assignee": null,
+        "timeoriginalestimate": 0,
+        "timespent": 0,
+        "created": "2024-01-19T10:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10009",
+      "key": "ERANI-9",
+      "fields": {
+        "summary": "Testing E2E con Playwright — flujos de registro",
+        "status": { "name": "To Do" },
+        "priority": { "name": "Medium" },
+        "assignee": { "displayName": "Ana Torres" },
+        "timeoriginalestimate": 0,
+        "timespent": 0,
+        "created": "2024-01-20T09:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10010",
+      "key": "ERANI-10",
+      "fields": {
+        "summary": "Cambio de alcance: añadir módulo de reportes exportables a Excel",
+        "status": { "name": "To Do" },
+        "priority": { "name": "High" },
+        "assignee": null,
+        "timeoriginalestimate": 0,
+        "timespent": 0,
+        "created": "2024-01-21T15:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10011",
+      "key": "ERANI-11",
+      "fields": {
+        "summary": "Setup de monitoreo con Datadog",
+        "status": { "name": "Done" },
+        "priority": { "name": "High" },
+        "assignee": { "displayName": "Luis García" },
+        "timeoriginalestimate": 14400,
+        "timespent": 14400,
+        "created": "2024-01-22T08:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10012",
+      "key": "ERANI-12",
+      "fields": {
+        "summary": "Migración de base de datos a PostgreSQL 16",
+        "status": { "name": "In Progress" },
+        "priority": { "name": "Critical" },
+        "assignee": { "displayName": "Carlos Méndez" },
+        "timeoriginalestimate": 0,
+        "timespent": 7200,
+        "created": "2024-01-23T09:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10013",
+      "key": "ERANI-13",
+      "fields": {
+        "summary": "Integración con Zapier para automatizar notificaciones",
+        "status": { "name": "To Do" },
+        "priority": { "name": "Low" },
+        "assignee": null,
+        "timeoriginalestimate": 0,
+        "timespent": 0,
+        "created": "2024-01-24T10:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10014",
+      "key": "ERANI-14",
+      "fields": {
+        "summary": "Funcionalidad adicional: exportar datos en formato PDF",
+        "status": { "name": "To Do" },
+        "priority": { "name": "Medium" },
+        "assignee": null,
+        "timeoriginalestimate": 0,
+        "timespent": 0,
+        "created": "2024-01-25T11:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10015",
+      "key": "ERANI-15",
+      "fields": {
+        "summary": "Revisar y actualizar políticas de seguridad",
+        "status": { "name": "Done" },
+        "priority": { "name": "High" },
+        "assignee": { "displayName": "María López" },
+        "timeoriginalestimate": 3600,
+        "timespent": 4500,
+        "created": "2024-01-26T08:00:00.000+0000"
+      }
+    }
+  ]
+}

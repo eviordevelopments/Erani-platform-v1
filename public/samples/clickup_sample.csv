@@ -1,0 +1,16 @@
+Task ID,Task Name,Status,Priority,Time Estimate,Time Tracked,Assignee,Tags,Created Date
+CU-001,Setup del proyecto y estructura base,Closed,Urgent,8h,7h 30m,Carlos Méndez,Backend|DevOps,2024-01-08
+CU-002,Diseño del sistema de componentes UI,Closed,High,6h,8h 45m,Ana Torres,Frontend|Design,2024-01-09
+CU-003,Implementar API de usuarios,In Progress,High,4h,2h,Luis García,Backend,2024-01-10
+CU-004,Fuera de alcance: integrar IA generativa para reportes,Open,High,,3h 30m,Carlos Méndez,Feature|AI,2024-01-11
+CU-005,Testing unitario del módulo de auth,Open,Normal,3h,1h,María López,QA|Testing,2024-01-12
+CU-006,Optimización de imágenes y assets,Closed,Low,2h,1h 45m,Ana Torres,Frontend|Performance,2024-01-13
+CU-007,Implementar caché con Redis,Open,High,,,Luis García,Backend|Performance,2024-01-14
+CU-008,Nuevo requerimiento: módulo de analytics en tiempo real,Open,Urgent,,5h,Carlos Méndez,Feature|Analytics,2024-01-15
+CU-009,Configurar variables de entorno por ambiente,Closed,Normal,1h,1h 15m,María López,DevOps,2024-01-16
+CU-010,Páginas de error personalizadas (404 500),Open,Low,2h,,Ana Torres,Frontend,2024-01-17
+CU-011,Integración con servicio de emails transaccionales,Open,High,,,Luis García,Backend|Email,2024-01-18
+CU-012,Revisión de seguridad y penetration testing,Open,Urgent,8h,2h,Carlos Méndez,Security,2024-01-19
+CU-013,Documentación de APIs en Swagger,Open,Normal,,,María López,Docs,2024-01-20
+CU-014,Cambio de alcance: dashboard ejecutivo para C-level,Open,High,,4h,Ana Torres,Feature|Dashboard,2024-01-21
+CU-015,Deploy en producción con zero-downtime,Open,Urgent,4h,,Luis García,DevOps,2024-01-22

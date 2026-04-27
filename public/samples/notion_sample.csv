@@ -1,0 +1,16 @@
+Name,Status,Tags,Due Date,Assignee,Priority,Estimate
+Diseño UX del portal de clientes,Done,Design|Frontend,2024-01-20,Ana Torres,High,4h
+Configuración inicial del servidor,Done,DevOps|Backend,2024-01-15,Luis García,Critical,8h
+Módulo de autenticación,In Progress,Backend|Security,,Carlos Méndez,High,
+Integración con API de pagos,To Do,Backend|Payments,,Ana Torres,Critical,
+Documentación técnica del sistema,To Do,Docs,2024-02-01,,Medium,
+Landing page responsive,Done,Frontend|Design,2024-01-18,María López,High,6h
+Panel de administración,In Progress,Frontend|Backend,,Carlos Méndez,High,
+Pruebas de carga y rendimiento,To Do,QA|Testing,,,Medium,
+Exportación de reportes CSV,To Do,Feature,,Luis García,Low,
+Notificaciones por email,To Do,Feature|Backend,,,Low,
+Sistema de roles y permisos,In Progress,Backend|Security,,María López,High,12h
+Internacionalización (i18n),To Do,Feature,,,Low,
+Backup automático de base de datos,Done,DevOps,2024-01-22,Carlos Méndez,High,3h
+Monitoreo de errores con Sentry,Done,DevOps|Monitoring,2024-01-19,Luis García,Medium,2h
+Funcionalidad adicional: modo oscuro,To Do,Frontend,,Ana Torres,Low,
