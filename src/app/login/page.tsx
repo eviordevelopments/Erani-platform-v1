@@ -139,7 +139,7 @@ export default function Login() {
             </p>
             <Link 
                 href="/register" 
-                className="text-xs font-black text-erani-blue uppercase tracking-widest hover:text-white transition-colors"
+                className="text-xs font-black text-erani-blue uppercase tracking-widest hover:text-black dark:hover:text-white transition-colors"
             >
                 Solicitar Auditoría Forense
             </Link>

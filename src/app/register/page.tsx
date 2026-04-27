@@ -129,6 +129,34 @@ export default function Register() {
           </button>
       </div>
 
+      {/* Animated Flowing Background for Final Steps */}
+      <AnimatePresence>
+        {(step === "success" || step === "tour") && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 2 }}
+            className="absolute inset-0 z-0 overflow-hidden pointer-events-none"
+          >
+            <motion.div
+              animate={{
+                x: ["-10%", "10%", "-10%"],
+                y: ["-10%", "10%", "-10%"],
+                scale: [1, 1.1, 1]
+              }}
+              transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute -inset-[50%] opacity-40 dark:opacity-30 bg-[radial-gradient(circle_at_center,rgba(0,85,160,0.3),rgba(158,128,255,0.2),rgba(255,92,92,0.1),transparent_60%)] blur-[80px]"
+            />
+            <motion.div
+              animate={{ rotate: [0, 360] }}
+              transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+              className="absolute -inset-[50%] opacity-20 dark:opacity-30 bg-[conic-gradient(from_0deg_at_50%_50%,rgba(0,85,160,0.2),rgba(158,128,255,0.2),rgba(255,92,92,0.2),rgba(0,85,160,0.2))] blur-[100px] origin-center"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence mode="wait">
         {/* STEP 1 & 2: PROTOCOLO DE REGISTRO */}
         {(step === "form-org" || step === "form-user") && (
@@ -275,7 +303,7 @@ export default function Register() {
                             <ImageIcon className="w-4 h-4 text-emerald-500" /> Logo de la Organización
                         </label>
                         <div className="flex items-center gap-6">
-                            <div className="w-20 h-20 rounded-[1.5rem] bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-center cursor-pointer hover:border-erani-blue transition-colors group">
+                            <div className="w-20 h-20 rounded-[1.5rem] bg-black/5 dark:bg-white/5 border border-erani-blue dark:border-white/10 flex items-center justify-center cursor-pointer hover:border-erani-blue dark:hover:border-erani-blue transition-colors group">
                                <UploadCloud className="w-6 h-6 text-gray-400 group-hover:text-erani-blue transition-colors" />
                             </div>
                             <div className="flex flex-col gap-2">
@@ -343,7 +371,7 @@ export default function Register() {
                                     className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
                                         formData.goals.includes(goal)
                                         ? "bg-erani-blue border-erani-blue text-white shadow-lg shadow-erani-blue/20"
-                                        : "bg-white/5 border-white/10 text-gray-500 hover:border-white/30"
+                                        : "bg-black/5 dark:bg-white/5 border-black/20 dark:border-white/10 text-gray-500 hover:border-black/40 dark:hover:border-white/30"
                                     }`}
                                 >
                                     {goal}
@@ -403,7 +431,7 @@ export default function Register() {
                             </div>
                             <div className="grid grid-cols-3 gap-5">
                                 {[1, 2, 3].map((i) => (
-                                    <div key={i} className="aspect-square rounded-[1.5rem] bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/20 flex flex-col items-center justify-center gap-3">
+                                    <div key={i} className="aspect-square rounded-[1.5rem] bg-black/5 dark:bg-white/5 border border-black/20 dark:border-white/20 flex flex-col items-center justify-center gap-3">
                                         <div className={`w-2 h-2 rounded-full ${i === 1 ? 'bg-erani-blue' : i === 2 ? 'bg-erani-purple' : 'bg-erani-coral'} animate-bounce`} style={{ animationDelay: `${i * 0.2}s` }} />
                                         <div className="w-10 h-1.5 bg-black/10 dark:bg-white/10 rounded-full" />
                                     </div>
@@ -542,7 +570,7 @@ export default function Register() {
                                 className={`flex items-center justify-between p-5 rounded-3xl border-2 transition-all ${
                                     checkedFiles.includes(file.id) 
                                     ? "bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-xl shadow-emerald-500/10" 
-                                    : "bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-gray-500 hover:border-black/20 dark:hover:border-white/20"
+                                    : "bg-black/5 dark:bg-white/5 border-black/20 dark:border-white/10 text-gray-500 hover:border-black/40 dark:hover:border-white/20"
                                 }`}
                             >
                                 <div className="flex items-center gap-5">
@@ -580,7 +608,7 @@ export default function Register() {
             key="success"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-2xl glassmorphism p-16 flex flex-col items-center text-center gap-10 relative overflow-hidden m-6 rounded-[3rem] border border-white/20 dark:border-white/5 shadow-2xl"
+            className="w-full max-w-2xl glassmorphism p-16 flex flex-col items-center text-center gap-10 relative z-10 overflow-hidden m-6 rounded-[3rem] border border-white/20 dark:border-white/5 shadow-2xl"
           >
             <div className="absolute -top-20 -right-20 w-64 h-64 bg-emerald-500/10 blur-[80px] rounded-full" />
             <Image src="/eanilogo.png" alt="ERANI" width={220} height={80} className="mb-6 logo-adaptive" />
@@ -607,7 +635,7 @@ export default function Register() {
             key="tour"
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-4xl glassmorphism p-16 flex flex-col gap-12 relative m-6 rounded-[3rem] border border-white/20 dark:border-white/5"
+            className="w-full max-w-4xl glassmorphism p-16 flex flex-col gap-12 relative z-10 m-6 rounded-[3rem] border border-white/20 dark:border-white/5 shadow-2xl"
           >
             <button 
                 onClick={() => router.push('/dashboard')}
