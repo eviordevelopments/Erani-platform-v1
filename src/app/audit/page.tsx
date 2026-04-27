@@ -129,6 +129,10 @@ export default function AuditProtocolPage() {
         files: [],
         status: "completed",
         createdAt: new Date().toISOString(),
+        serverRegion: "us-west",
+        teamAccess: ["Admin", "Security Ops"],
+        isTemporal: false,
+        expirationHours: 24,
         settings: { allowStorage: true, historicalContext: true }
       };
       setProjects([mockProject]);
