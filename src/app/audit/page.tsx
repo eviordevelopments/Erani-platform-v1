@@ -180,6 +180,11 @@ export default function AuditProtocolPage() {
     });
   };
 
+  const handleDeleteProject = (id: string) => {
+    setProjects(projects.filter(p => p.id !== id));
+    if (activeProjectId === id) setActiveProjectId(null);
+  };
+
   const handleFiles = (incomingFiles: File[]) => {
     if (activeProjectId && incomingFiles.length > 0) {
       setProjects(prev => prev.map(p => {
