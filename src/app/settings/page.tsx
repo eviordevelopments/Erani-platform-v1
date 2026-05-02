@@ -77,12 +77,25 @@ export default function SettingsPage() {
   const [logs, setLogs] = useState<any[]>([]);
 
   useEffect(() => {
-    if (profile) {
+    if (profile || user) {
       fetchInitialData();
     }
-  }, [profile]);
+  }, [profile, user]);
 
   const fetchInitialData = async () => {
+    // Retrieve fallback metadata from onboarding
+    const meta = user?.user_metadata || {};
+    setOrgData({
+      name: meta.orgName || "",
+      bio: meta.bio || "",
+      sector: meta.sector || "",
+      teamSize: meta.teamSize || "1-10",
+      annualRevenue: 0,
+      goals: meta.goals || [],
+      recoveryEmail: meta.recoveryEmail || "",
+      logoUrl: profile?.avatar_url || ""
+    });
+
     if (!profile?.organization_id) return;
     
     // Fetch Org
@@ -94,14 +107,14 @@ export default function SettingsPage() {
     
     if (org) {
       setOrgData({
-        name: org.name || "",
-        bio: org.bio || "",
-        sector: org.sector || "",
-        teamSize: org.team_size || "1-10",
+        name: org.name || meta.orgName || "",
+        bio: org.bio || meta.bio || "",
+        sector: org.sector || meta.sector || "",
+        teamSize: org.team_size || meta.teamSize || "1-10",
         annualRevenue: org.annual_revenue || 0,
-        goals: org.goals || [],
-        recoveryEmail: org.recovery_email || "",
-        logoUrl: org.logo_url || ""
+        goals: org.goals || meta.goals || [],
+        recoveryEmail: org.recovery_email || meta.recoveryEmail || "",
+        logoUrl: org.logo_url || profile?.avatar_url || ""
       });
       setErisBalance(org.eris_balance || 1000);
     }
