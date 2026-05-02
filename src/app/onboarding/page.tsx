@@ -116,8 +116,8 @@ export default function Onboarding() {
     setIsSaving(true);
     
     try {
-      // Save metadata to Auth User
-      await supabase.auth.updateUser({
+      // Save metadata to Auth User (excluding the massive base64 string to avoid JWT bloat)
+      const { error: authError } = await supabase.auth.updateUser({
         data: {
           onboardingCompleted: true,
           eris_balance: 100,
@@ -127,17 +127,21 @@ export default function Onboarding() {
           teamSize: formData.teamSize,
           goals: formData.goals,
           recoveryEmail: formData.recoveryEmail,
-          logoBase64: formData.logoBase64,
           checkedFiles,
           teamEmails
         }
       });
 
-      // Update public profile
-      await supabase.from('profiles').update({
+      if (authError) throw authError;
+
+      // Update public profile with the logo Base64
+      const { error: profileError } = await supabase.from('profiles').update({
         full_name: formData.fullName,
-        organization_id: formData.orgName // Simple mapping for now
+        organization_id: formData.orgName, // Simple mapping for now
+        avatar_url: formData.logoBase64 // Store base64 here instead of user_metadata
       }).eq('id', user.id);
+
+      if (profileError) throw profileError;
 
       await refreshProfile();
 
@@ -148,8 +152,9 @@ export default function Onboarding() {
         origin: { y: 0.6 },
         colors: ['#0055A0', '#9e80ff', '#FF5C5C']
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving onboarding data", error);
+      alert("Hubo un error al guardar la configuración: " + (error.message || "Inténtalo de nuevo."));
     } finally {
       setIsSaving(false);
     }
