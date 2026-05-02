@@ -26,6 +26,29 @@ export interface SessionRecord {
   calendlyUrl?: string;
 }
 
+export interface FeedbackItem {
+  id: string;
+  title: string;
+  description: string;
+  type: "bug" | "feature" | "improvement";
+  status: "todo" | "in-progress" | "review" | "done";
+  priority: "low" | "medium" | "high";
+  reportedBy: string;
+  createdAt: Date;
+}
+
+export interface AutomationFlow {
+  id: string;
+  name: string;
+  description: string;
+  status: "active" | "inactive" | "error";
+  category: "forense" | "financiera" | "operativa";
+  roi_projection: number; // Percentage
+  hours_saved_monthly: number;
+  n8n_id?: string;
+  last_run?: Date;
+}
+
 export interface DashboardState {
   processingState: ProcessingState;
   processingStep: string;
@@ -34,6 +57,8 @@ export interface DashboardState {
   insights: InsightData | null;
   sessions: SessionRecord[];
   bentoOrder: string[];
+  feedback: FeedbackItem[];
+  automations: AutomationFlow[];
 }
 
 export interface UserPreferences {
@@ -51,6 +76,9 @@ interface DashboardContextType extends DashboardState {
   removeSession: (id: string) => void;
   updateBentoOrder: (order: string[]) => void;
   updatePreferences: (prefs: Partial<UserPreferences>) => void;
+  addFeedback: (item: FeedbackItem) => void;
+  updateFeedbackStatus: (id: string, status: FeedbackItem["status"]) => void;
+  toggleAutomation: (id: string) => void;
   isSidebarCollapsed: boolean;
   setIsSidebarCollapsed: (collapsed: boolean) => void;
 }
@@ -69,6 +97,8 @@ const DashboardContext = createContext<DashboardContextType>({
   insights: null,
   sessions: [],
   bentoOrder: DEFAULT_BENTO_ORDER,
+  feedback: [],
+  automations: [],
   preferences: { font_size: 16, theme_color: "#0055A0", custom_logo_url: null },
   startProcessing: () => {},
   completeProcessing: () => {},
@@ -77,6 +107,9 @@ const DashboardContext = createContext<DashboardContextType>({
   removeSession: () => {},
   updateBentoOrder: () => {},
   updatePreferences: () => {},
+  addFeedback: () => {},
+  updateFeedbackStatus: () => {},
+  toggleAutomation: () => {},
   isSidebarCollapsed: false,
   setIsSidebarCollapsed: () => {},
 });
@@ -92,6 +125,41 @@ export const DashboardProvider = ({ children }: { children: React.ReactNode }) =
     insights: null,
     sessions: [],
     bentoOrder: DEFAULT_BENTO_ORDER,
+    feedback: [],
+    automations: [
+      {
+        id: "1",
+        name: "Protección de Fugitividad de Capital",
+        description: "Detección en tiempo real de transferencias no autorizadas y alertas de liquidez.",
+        status: "active",
+        category: "financiera",
+        roi_projection: 320,
+        hours_saved_monthly: 45,
+        n8n_id: "flow_001",
+        last_run: new Date()
+      },
+      {
+        id: "2",
+        name: "Auditoría Automática de Jira",
+        description: "Sincronización forense de logs de actividad para detectar Scope Creep.",
+        status: "active",
+        category: "forense",
+        roi_projection: 150,
+        hours_saved_monthly: 12,
+        n8n_id: "flow_002",
+        last_run: new Date()
+      },
+      {
+        id: "3",
+        name: "Conciliación Bancaria IA",
+        description: "Match inteligente de facturas vs depósitos bancarios mediante GPT-4o.",
+        status: "inactive",
+        category: "financiera",
+        roi_projection: 480,
+        hours_saved_monthly: 60,
+        n8n_id: "flow_003"
+      }
+    ],
   });
 
   const [preferences, setPreferences] = useState<UserPreferences>({
@@ -159,6 +227,29 @@ export const DashboardProvider = ({ children }: { children: React.ReactNode }) =
     setPreferences((prev) => ({ ...prev, ...prefs }));
   }, []);
 
+  const addFeedback = useCallback((item: FeedbackItem) => {
+    setState((prev) => ({
+      ...prev,
+      feedback: [item, ...prev.feedback],
+    }));
+  }, []);
+
+  const updateFeedbackStatus = useCallback((id: string, status: FeedbackItem["status"]) => {
+    setState((prev) => ({
+      ...prev,
+      feedback: prev.feedback.map((f) => (f.id === id ? { ...f, status } : f)),
+    }));
+  }, []);
+
+  const toggleAutomation = useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      automations: prev.automations.map((a) => 
+        a.id === id ? { ...a, status: a.status === "active" ? "inactive" : "active" } : a
+      ),
+    }));
+  }, []);
+
   return (
     <DashboardContext.Provider
       value={{
@@ -171,6 +262,9 @@ export const DashboardProvider = ({ children }: { children: React.ReactNode }) =
         removeSession,
         updateBentoOrder,
         updatePreferences,
+        addFeedback,
+        updateFeedbackStatus,
+        toggleAutomation,
         isSidebarCollapsed,
         setIsSidebarCollapsed,
       }}

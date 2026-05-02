@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 
 interface DonutProps {
   percentage: number;
-  label: string;
+  label?: string;
   color: string;
   size?: number;
   strokeWidth?: number;

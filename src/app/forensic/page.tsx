@@ -91,7 +91,6 @@ export default function ForensicPage() {
   const [activeTab, setActiveTab] = useState<TabId>("scorecard");
   const [data, setData] = useState<ForensicReportData>(INITIAL_DATA);
   const [loading, setLoading] = useState(true);
-  const [selectedModel, setSelectedModel] = useState("Gemini 1.5 Flash");
 
   useEffect(() => {
     fetchForensicData();
@@ -167,19 +166,30 @@ export default function ForensicPage() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                  {/* Model Selector */}
-                  <div className="flex items-center gap-3 px-5 py-3 rounded-xl glassmorphism border border-white/5 group hover:border-erani-purple transition-all cursor-pointer">
-                    <Cpu className="w-4 h-4 text-erani-purple" />
-                    <div className="flex flex-col">
-                      <span className="text-[8px] uppercase font-black tracking-widest text-gray-500">Motor de IA</span>
-                       <span className="text-[10px] font-black text-foreground flex items-center gap-2">
-                        {selectedModel} <ChevronDown className="w-3 h-3 text-gray-600" />
-                      </span>
-                    </div>
-                  </div>
+                   {/* Model Info (Read-only) */}
+                   <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-foreground/5 border border-glass-border">
+                     <Cpu className="w-4 h-4 text-erani-purple" />
+                     <div className="flex flex-col">
+                       <span className="text-[8px] uppercase font-black tracking-widest text-gray-500">Motor de IA Utilizado</span>
+                        <span className="text-[10px] font-black text-foreground">
+                         {data.projectName.includes('PRO') ? 'Gemini 1.5 Pro' : 'Gemini 1.5 Flash'}
+                       </span>
+                     </div>
+                   </div>
 
-                   <ReportDownloader targetId="forensic-scorecard-grid" />
-                </div>
+                   {/* ERIS Consumption Info */}
+                   <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-erani-blue/5 border border-erani-blue/20">
+                     <Zap className="w-4 h-4 text-erani-blue" />
+                     <div className="flex flex-col">
+                       <span className="text-[8px] uppercase font-black tracking-widest text-gray-500">Costo de Auditoría</span>
+                        <span className="text-[10px] font-black text-erani-blue">
+                         5.0 ERIS
+                       </span>
+                     </div>
+                   </div>
+
+                    <ReportDownloader targetId="forensic-scorecard-grid" />
+                 </div>
             </div>
 
             {/* Tab Navigation */}

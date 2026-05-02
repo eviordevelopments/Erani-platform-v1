@@ -31,10 +31,17 @@ import {
   Users,
   Timer,
   Cloud,
-  Lock
+  Lock,
+  Zap,
+  TrendingUp,
+  ArrowUpRight,
+  BarChart,
+  FileJson
 } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 import { useRef } from "react";
+import { ForensicReport } from "@/types/forensic";
+import DonutChart from "@/components/DonutChart";
 
 interface Project {
   id: string;
@@ -51,6 +58,8 @@ interface Project {
   settings: {
     allowStorage: boolean;
     historicalContext: boolean;
+    aiModel: string;
+    aiTemperature: number;
   };
 }
 
@@ -62,9 +71,11 @@ const PROJECT_SIZES = {
 
 export default function AuditProtocolPage() {
   const { isSidebarCollapsed, uploadedFiles } = useDashboard();
-  const [view, setView] = useState<"setup" | "manage" | "processing">("manage");
+  const [view, setView] = useState<"setup" | "manage" | "processing" | "report">("manage");
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const activeProject = projects.find(p => p.id === activeProjectId);
+  const [forensicReport, setForensicReport] = useState<ForensicReport | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [selectingIconFor, setSelectingIconFor] = useState<string | null>(null);
@@ -97,9 +108,9 @@ export default function AuditProtocolPage() {
       setSelectingIconFor(null);
   };
 
-  const toggleProjectSetting = (projectId: string, setting: 'allowStorage' | 'historicalContext') => {
+  const toggleProjectSetting = (projectId: string, setting: 'allowStorage' | 'historicalContext' | 'aiModel' | 'aiTemperature', value?: any) => {
     setProjects(prev => prev.map(p => 
-      p.id === projectId ? { ...p, settings: { ...p.settings, [setting]: !p.settings[setting] } } : p
+      p.id === projectId ? { ...p, settings: { ...p.settings, [setting]: value !== undefined ? value : !p.settings[setting as keyof typeof p.settings] } } : p
     ));
   };
 
@@ -112,7 +123,9 @@ export default function AuditProtocolPage() {
     serverRegion: "us-west",
     teamAccess: ["Admin", "Security Ops"],
     isTemporal: false,
-    expirationHours: 24
+    expirationHours: 24,
+    aiModel: "gemini-1.5-flash",
+    aiTemperature: 0.7
   });
 
   // Load projects from localStorage
@@ -133,7 +146,12 @@ export default function AuditProtocolPage() {
         teamAccess: ["Admin", "Security Ops"],
         isTemporal: false,
         expirationHours: 24,
-        settings: { allowStorage: true, historicalContext: true }
+        settings: { 
+          allowStorage: true, 
+          historicalContext: true,
+          aiModel: "gemini-1.5-flash",
+          aiTemperature: 0.7
+        }
       };
       setProjects([mockProject]);
     }
@@ -159,9 +177,11 @@ export default function AuditProtocolPage() {
       teamAccess: newProject.teamAccess,
       isTemporal: newProject.isTemporal,
       expirationHours: newProject.expirationHours,
-      settings: {
-        allowStorage: newProject.allowStorage,
-        historicalContext: newProject.historicalContext
+      settings: { 
+        allowStorage: newProject.allowStorage, 
+        historicalContext: newProject.historicalContext,
+        aiModel: newProject.aiModel,
+        aiTemperature: newProject.aiTemperature
       }
     };
     
@@ -176,7 +196,9 @@ export default function AuditProtocolPage() {
       serverRegion: "us-west",
       teamAccess: ["Admin", "Security Ops"],
       isTemporal: false,
-      expirationHours: 24
+      expirationHours: 24,
+      aiModel: "gemini-1.5-flash",
+      aiTemperature: 0.7
     });
   };
 
@@ -208,17 +230,60 @@ export default function AuditProtocolPage() {
 
   const handleFileClick = () => fileInputRef.current?.click();
 
-  // Progress Simulation Effect
+  // Progress Simulation & API Integration Effect
   useEffect(() => {
-    if (view === "processing") {
+    if (view === "processing" && activeProject) {
       setProcessingProgress(0);
       setCurrentStepIdx(0);
+      
+      let isSubscribed = true;
+
+      const triggerAnalysis = async () => {
+        try {
+          // Build multipart FormData with actual files + project config
+          const formData = new FormData();
+          formData.append('organizationId',    'org_erani_test');
+          formData.append('projectId',         activeProject.id);
+          formData.append('allowStorage',      String(activeProject.settings.allowStorage));
+          formData.append('historicalContext', String(activeProject.settings.historicalContext));
+          formData.append('aiModel',           activeProject.settings.aiModel || 'gemini-2.5-flash');
+          formData.append('aiTemperature',     String(activeProject.settings.aiTemperature));
+
+          // Append actual File objects so the API can read & vectorize them
+          for (const file of activeProject.files) {
+            if (file instanceof File) {
+              formData.append('files', file, file.name);
+            }
+          }
+
+          const response = await fetch('/api/forensic', {
+            method: 'POST',
+            // No Content-Type header — browser sets multipart boundary automatically
+            body: formData,
+          });
+
+          if (!response.ok) throw new Error("Inferencia fallida");
+          
+          const result = await response.json();
+
+          if (isSubscribed) {
+            console.log("Análisis forense completado en backend");
+            if (result.success && result.report) {
+              setForensicReport(result.report);
+            }
+          }
+        } catch (err) {
+          console.error("Error en auditoría forense:", err);
+        }
+      };
+
+      triggerAnalysis();
       
       const interval = setInterval(() => {
         setProcessingProgress(prev => {
           if (prev >= 100) {
             clearInterval(interval);
-            setTimeout(() => setView("manage"), 1500); // In real app, redirect to /forensic
+            setTimeout(() => setView("report"), 1500); // Redirect to report
             return 100;
           }
           const next = prev + 0.5;
@@ -228,11 +293,14 @@ export default function AuditProtocolPage() {
         });
       }, 30);
       
-      return () => clearInterval(interval);
+      return () => {
+        isSubscribed = false;
+        clearInterval(interval);
+      };
     }
-  }, [view]);
+  }, [view, activeProject]);
 
-  const activeProject = projects.find(p => p.id === activeProjectId);
+
 
   return (
     <div className="min-h-screen bg-background text-foreground flex overflow-hidden">
@@ -565,6 +633,46 @@ export default function AuditProtocolPage() {
                           )}
                        </div>
 
+                       <div className="flex flex-col gap-6 pt-6 border-t border-glass-border">
+                          <label className="text-[10px] uppercase font-black tracking-[0.2em] text-erani-blue flex items-center gap-2">
+                             <Cpu className="w-4 h-4" /> Configuración del Motor IA
+                          </label>
+                          
+                          <div className="grid grid-cols-2 gap-6">
+                             <div className="flex flex-col gap-3">
+                                <label className="text-[9px] uppercase font-bold text-gray-500">Modelo AI (Motor)</label>
+                                <select 
+                                  value={newProject.aiModel}
+                                  onChange={(e) => setNewProject({...newProject, aiModel: e.target.value})}
+                                  className="select-premium text-[10px] font-black"
+                                >
+                                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (Velocidad)</option>
+                                  <option value="gemini-1.5-pro">Gemini 1.5 Pro (Precisión)</option>
+                                  <option value="gemini-2.0-flash">Gemini 2.0 Flash (Experimental)</option>
+                                </select>
+                             </div>
+                             <div className="flex flex-col gap-3">
+                                <div className="flex justify-between items-center">
+                                   <label className="text-[9px] uppercase font-bold text-gray-500">Temperatura (Creatividad)</label>
+                                   <span className="text-[10px] font-black text-foreground">{newProject.aiTemperature}</span>
+                                </div>
+                                <input 
+                                  type="range"
+                                  min="0"
+                                  max="1"
+                                  step="0.1"
+                                  value={newProject.aiTemperature}
+                                  onChange={(e) => setNewProject({...newProject, aiTemperature: parseFloat(e.target.value)})}
+                                  className="w-full accent-erani-blue h-1.5 bg-foreground/10 rounded-full"
+                                />
+                                <div className="flex justify-between text-[7px] font-bold text-gray-600 uppercase tracking-widest">
+                                   <span>Forense</span>
+                                   <span>Creativo</span>
+                                </div>
+                             </div>
+                          </div>
+                       </div>
+
                       <div className="mt-auto pt-6 lg:border-t lg:border-glass-border">
                           <button 
                             onClick={handleCreateProject}
@@ -745,6 +853,43 @@ export default function AuditProtocolPage() {
                                </button>
                             </div>
 
+                            <div className="flex items-center justify-between">
+                               <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-2">
+                                     <Cpu className="w-4 h-4 text-erani-blue" />
+                                     <span className="text-[10px] font-black uppercase tracking-tight text-foreground">Motor Forense</span>
+                                  </div>
+                               </div>
+                               <select 
+                                 value={activeProject?.settings.aiModel}
+                                 onChange={(e) => toggleProjectSetting(activeProject!.id, 'aiModel', e.target.value)}
+                                 className="bg-transparent text-[9px] font-black uppercase text-erani-blue border-none focus:ring-0 cursor-pointer text-right"
+                               >
+                                  <option value="gemini-2.5-flash">Gemini 2.5 Flash ✦</option>
+                                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                                  <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                               </select>
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                               <div className="flex justify-between items-center">
+                                  <div className="flex items-center gap-2">
+                                     <Zap className="w-4 h-4 text-amber-500" />
+                                     <span className="text-[10px] font-black uppercase tracking-tight text-foreground">Temperatura</span>
+                                  </div>
+                                  <span className="text-[10px] font-black text-foreground">{activeProject?.settings.aiTemperature}</span>
+                               </div>
+                               <input 
+                                 type="range"
+                                 min="0"
+                                 max="1"
+                                 step="0.1"
+                                 value={activeProject?.settings.aiTemperature}
+                                 onChange={(e) => toggleProjectSetting(activeProject!.id, 'aiTemperature', parseFloat(e.target.value))}
+                                 className="w-full accent-erani-blue h-1.5 bg-foreground/10 rounded-full"
+                               />
+                            </div>
+
                             <div className="p-4 rounded-2xl bg-erani-blue/5 border border-erani-blue/10 text-[9px] text-erani-blue font-bold leading-tight flex items-center gap-3">
                                <AlertTriangle className="w-4 h-4 shrink-0" />
                                Soberanía de Datos: No procesamos información legible, solo vectores de metadata cifrados.
@@ -832,9 +977,33 @@ export default function AuditProtocolPage() {
                        </AnimatePresence>
                        <p className="text-[10px] font-black text-erani-blue uppercase tracking-[0.4em] flex items-center gap-6">
                           <span className="w-12 h-px bg-erani-blue/30" />
-                          Ejecutando Diagnóstico Forense Gemini
+                          Ejecutando Diagnóstico Forense {activeProject?.settings.aiModel.includes('pro') ? 'Gemini Pro' : 'Gemini Flash'}
                           <span className="w-12 h-px bg-erani-blue/30" />
                        </p>
+                       
+                       <motion.div 
+                         initial={{ opacity: 0, scale: 0.9 }}
+                         animate={{ opacity: 1, scale: 1 }}
+                         transition={{ delay: 1 }}
+                         className="flex items-center gap-4 px-6 py-3 rounded-2xl bg-erani-blue/10 border border-erani-blue/20"
+                       >
+                          <Zap className="w-4 h-4 text-erani-blue fill-erani-blue animate-pulse" />
+                          <div className="flex flex-col">
+                             <span className="text-[8px] uppercase font-black text-gray-500 tracking-widest">Inferencia en curso</span>
+                             <span className="text-[10px] font-black text-foreground">Consumo: <span className="text-erani-blue">-5.0 ERIS</span></span>
+                          </div>
+                          <div className="w-px h-8 bg-glass-border mx-2" />
+                          <div className="flex flex-col">
+                             <span className="text-[8px] uppercase font-black text-gray-500 tracking-widest">Token Count</span>
+                             <motion.span 
+                               animate={{ opacity: [0.5, 1, 0.5] }}
+                               transition={{ duration: 1.5, repeat: Infinity }}
+                               className="text-[10px] font-black text-foreground"
+                             >
+                               ~{Math.floor(processingProgress * 120)} Tokens
+                             </motion.span>
+                          </div>
+                       </motion.div>
                     </div>
 
                     <div className="flex flex-col gap-5">
@@ -903,6 +1072,220 @@ export default function AuditProtocolPage() {
                     </div>
                  </div>
                </motion.div>
+            )}
+
+            {/* VIEW: BENTO REPORT */}
+            {view === "report" && forensicReport && (
+              <motion.div
+                key="report"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col gap-8 pb-12"
+              >
+                {/* Report Header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-erani-blue">
+                        {forensicReport.report_metadata.audit_id}
+                      </span>
+                      <div className="w-1 h-1 rounded-full bg-glass-border" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">
+                        {forensicReport.report_metadata.project_name}
+                      </span>
+                    </div>
+                    <h2 className="text-3xl font-black uppercase tracking-tight text-foreground">
+                      Resultado del <span className="text-gradient-brand">Peritaje Forense</span>
+                    </h2>
+                  </div>
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => setView("manage")}
+                      className="px-6 py-3 rounded-full bg-foreground/5 hover:bg-foreground/10 border border-glass-border text-[10px] font-black uppercase tracking-widest transition-all"
+                    >
+                      Cerrar Reporte
+                    </button>
+                    <button className="px-8 py-3 rounded-full bg-erani-blue text-white shadow-lg shadow-erani-blue/20 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-all">
+                      <FileText className="w-4 h-4" /> Exportar PDF
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bento Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  
+                  {/* Slide 1: Impacto Directo (Wide) */}
+                  <div className="md:col-span-2 glassmorphism p-8 rounded-[2.5rem] border border-glass-border relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <TrendingUp className="w-32 h-32 text-erani-blue" />
+                    </div>
+                    <div className="relative z-10 flex flex-col gap-8">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-nav-text">Impacto Directo y Scorecard</h3>
+                        <span className="px-3 py-1 rounded-full bg-erani-coral/10 text-erani-coral text-[9px] font-black uppercase tracking-widest">Pérdida Crítica Detectada</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-black uppercase text-gray-500">Fuga Confirmada</span>
+                          <span className="text-3xl font-black text-erani-coral">${forensicReport.slide_1_impacto_directo.fuga_confirmada_mxn.toLocaleString()}</span>
+                          <span className="text-[8px] font-bold text-gray-600 uppercase">Tickets Liquidados</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-black uppercase text-gray-500">Riesgo Latente</span>
+                          <span className="text-3xl font-black text-foreground">${forensicReport.slide_1_impacto_directo.riesgo_latente_mensual_mxn.toLocaleString()}</span>
+                          <span className="text-[8px] font-bold text-gray-600 uppercase">Mensual Proyectado</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-black uppercase text-gray-500">Scope Creep</span>
+                          <span className="text-3xl font-black text-erani-purple">{forensicReport.slide_1_impacto_directo.desviacion_scope_creep_pct}%</span>
+                          <span className="text-[8px] font-bold text-gray-600 uppercase">Desviación de Alcance</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-black uppercase text-gray-500">COI Anual</span>
+                          <span className="text-3xl font-black text-erani-blue">${forensicReport.slide_1_impacto_directo.coi_anual_mxn.toLocaleString()}</span>
+                          <span className="text-[8px] font-bold text-gray-600 uppercase">Costo de Inacción</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Slide 3: KPIs de Salud (Single) */}
+                  <div className="glassmorphism p-8 rounded-[2.5rem] border border-glass-border flex flex-col gap-8">
+                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-nav-text">Monitores de Salud AI</h3>
+                    
+                    <div className="flex flex-col gap-6">
+                      {[
+                        { label: "Bucle de Ineficiencia", val: forensicReport.slide_3_kpis_salud.monitor_bucle_pct, color: "#00B7FF" },
+                        { label: "Índice de Fricción", val: forensicReport.slide_3_kpis_salud.indice_friccion_pct, color: "#9e80ff" },
+                        { label: "Dark Data Index", val: forensicReport.slide_3_kpis_salud.dark_data_index_pct, color: "#FF5C5C" }
+                      ].map((kpi, i) => (
+                        <div key={i} className="flex items-center gap-4">
+                          <DonutChart percentage={kpi.val} size={50} strokeWidth={6} color={kpi.color} />
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-black uppercase text-gray-500">{kpi.label}</span>
+                            <span className="text-lg font-black text-foreground">{kpi.val}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-auto p-4 rounded-2xl bg-foreground/5 border border-glass-border">
+                       <span className="text-[8px] font-black uppercase text-erani-blue tracking-widest block mb-1">Ceguera Operativa</span>
+                       <p className="text-[9px] font-medium text-gray-400 italic leading-relaxed">{forensicReport.slide_3_kpis_salud.analisis_ceguera_operativa}</p>
+                    </div>
+                  </div>
+
+                  {/* Slide 2: Análisis Forense (Full Width Bottom) */}
+                  <div className="md:col-span-2 glassmorphism p-8 rounded-[2.5rem] border border-glass-border flex flex-col gap-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-nav-text">Hemorragias Críticas (Top 5)</h3>
+                      <div className="flex gap-2">
+                        <span className="px-2 py-1 rounded bg-erani-blue/10 text-erani-blue text-[8px] font-black uppercase">Consolidación Activa</span>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-glass-border">
+                            <th className="py-4 text-[9px] font-black uppercase text-gray-500">Ticket ID</th>
+                            <th className="py-4 text-[9px] font-black uppercase text-gray-500">Descripción</th>
+                            <th className="py-4 text-[9px] font-black uppercase text-gray-500">Origen</th>
+                            <th className="py-4 text-[9px] font-black uppercase text-gray-500">Inferencia</th>
+                            <th className="py-4 text-[9px] font-black uppercase text-gray-500 text-right">Costo Invisible</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {forensicReport.slide_2_analisis_forense.top_5_tickets.map((ticket, i) => (
+                            <tr key={i} className="border-b border-glass-border/50 group/row hover:bg-foreground/5 transition-colors">
+                              <td className="py-4 text-[10px] font-mono font-bold text-erani-blue">{ticket.ticket_id}</td>
+                              <td className="py-4 text-[10px] font-bold text-foreground max-w-[200px] truncate">{ticket.descripcion}</td>
+                              <td className="py-4">
+                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${ticket.filtro === '[INT]' ? 'bg-amber-500/10 text-amber-500' : 'bg-erani-purple/10 text-erani-purple'}`}>
+                                  {ticket.filtro}
+                                </span>
+                              </td>
+                              <td className="py-4 text-[10px] font-bold text-gray-500">{ticket.hrs_calc}h Est.</td>
+                              <td className="py-4 text-[10px] font-black text-foreground text-right">${ticket.costo_invisible_mxn.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-erani-blue/5">
+                            <td colSpan={4} className="py-4 px-4 text-[10px] font-black uppercase text-gray-500">
+                              Otros {forensicReport.slide_2_analisis_forense.resumen_consolidacion.otros_tickets_cantidad} Tickets Consolidados
+                            </td>
+                            <td className="py-4 px-4 text-[10px] font-black text-foreground text-right">
+                              ${forensicReport.slide_2_analisis_forense.resumen_consolidacion.otros_tickets_monto_mxn.toLocaleString()}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Slide 4: Estrategia Firewall */}
+                  <div className="glassmorphism p-8 rounded-[2.5rem] border border-glass-border flex flex-col gap-8 relative overflow-hidden">
+                    <div className="absolute -bottom-10 -right-10 opacity-5">
+                       <Shield className="w-40 h-40 text-emerald-500" />
+                    </div>
+                    
+                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-nav-text">Estrategia de Blindaje</h3>
+                    
+                    <div className="flex flex-col gap-6 relative z-10">
+                      <div className="p-5 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-emerald-500" />
+                          <span className="text-[10px] font-black uppercase text-emerald-500">ROI Proyectado</span>
+                        </div>
+                        <span className="text-3xl font-black text-foreground">{forensicReport.slide_4_estrategia_firewall.roi_dias} Días</span>
+                      </div>
+
+                      <div className="p-5 rounded-3xl bg-erani-blue/10 border border-erani-blue/20 flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <Target className="w-4 h-4 text-erani-blue" />
+                          <span className="text-[10px] font-black uppercase text-erani-blue">Mejora de Margen</span>
+                        </div>
+                        <span className="text-3xl font-black text-foreground">+{forensicReport.slide_4_estrategia_firewall.proyeccion_margen_pct}%</span>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Protocolos de Bloqueo</span>
+                        <p className="text-[10px] font-medium text-gray-400 leading-relaxed">{forensicReport.slide_4_estrategia_firewall.protocolos_bloqueo}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Technical Annex (Full Width) */}
+                  <div className="md:col-span-3 glassmorphism p-8 rounded-[2.5rem] border border-glass-border flex flex-col gap-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-erani-purple/10">
+                        <FileJson className="w-5 h-5 text-erani-purple" />
+                      </div>
+                      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-nav-text">Anexo Técnico Forense</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-4">
+                        <span className="text-[9px] font-black uppercase text-gray-500 tracking-widest block">Metodología de Inferencia</span>
+                        <p className="text-[10px] font-medium text-gray-400 leading-relaxed bg-foreground/5 p-4 rounded-2xl border border-glass-border">
+                          {forensicReport.anexo_tecnico.metodologia_inferencia}
+                        </p>
+                      </div>
+                      <div className="space-y-4">
+                        <span className="text-[9px] font-black uppercase text-gray-500 tracking-widest block">Vectores de Auditoría</span>
+                        <div className="flex flex-wrap gap-2">
+                          {forensicReport.anexo_tecnico.vectores_auditados.map((vector, i) => (
+                            <span key={i} className="px-3 py-1.5 rounded-full bg-erani-blue/5 border border-erani-blue/10 text-[9px] font-bold text-erani-blue">
+                              {vector}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>

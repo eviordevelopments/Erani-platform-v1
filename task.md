@@ -1,0 +1,6 @@
+- [x] **Configuración del Motor IA:** Migrar la selección de modelo y temperatura al flujo de creación de proyectos.
+- [x] **UI de Consumo:** Implementar la visualización del consumo de ERIs en la UI durante el proceso de análisis (animación de progreso de tokens/créditos).
+- [x] **Integración Real:** Conectar los parámetros `aiModel` y `aiTemperature` guardados en el proyecto con la llamada real al endpoint de API en `src/app/api/forensic/route.ts`.
+- [x] **Visibilidad en Hover:** Corregir el color del enlace "SOLICITAR AUDITORÍA FORENSE" en modo claro para que sea legible (negro) al hacer hover.
+- [ ] **Verificación DNS:** Validar la disponibilidad del dominio `platform.erani.mx` tras la propagación de los cambios en el despliegue.
+- [ ] **Dashboard de Consumo:** Crear un componente de progreso que consuma el estado global de ERIs y lo actualice en tiempo real tras finalizar el análisis.

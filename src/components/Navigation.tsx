@@ -50,7 +50,7 @@ export default function Navigation() {
         <div className="flex items-center gap-4">
           <Link 
             href="/login" 
-            className="hidden sm:flex items-center gap-2 text-[10px] uppercase font-black tracking-widest text-gray-400 hover:text-white transition-colors"
+            className="hidden sm:flex items-center gap-2 text-[10px] uppercase font-black tracking-widest text-gray-400 hover:text-black dark:hover:text-white transition-colors"
           >
             <LogIn className="w-4 h-4" />
             Ingresar

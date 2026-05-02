@@ -1,7 +1,10 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   output: 'standalone',
+
+  // Prevent webpack from bundling native Node modules that use pdfjs-dist internally.
+  // These must run as true Node.js CJS modules, NOT in the RSC webpack sandbox.
+  serverExternalPackages: ['pdf-parse', 'pdfjs-dist', 'xlsx', 'csv-parse'],
   // Prevent ESLint warnings from failing CI builds on Netlify
   eslint: {
     ignoreDuringBuilds: true,
@@ -35,4 +38,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
