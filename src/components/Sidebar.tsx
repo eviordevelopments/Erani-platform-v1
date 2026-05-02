@@ -28,6 +28,8 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { useTheme } from "@/context/ThemeContext";
 import { useDashboard } from "@/context/DashboardContext";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard Forense", href: "/dashboard" },
@@ -44,11 +46,24 @@ const menuItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { isSidebarCollapsed: isCollapsed, setIsSidebarCollapsed: setIsCollapsed } = useDashboard();
   const { theme, toggleTheme } = useTheme();
+  const { user, profile, signOut } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const sidebarWidth = isCollapsed ? 88 : 280;
+
+  const handleLogout = async () => {
+    await signOut();
+    router.push('/login');
+  };
+
+  const userMeta = user?.user_metadata || {};
+  const logoSrc = userMeta.logoBase64 || "/isologo.png";
+  const erisBalance = userMeta.eris_balance || 0;
+  const fullName = profile?.full_name || "Usuario";
+  const orgName = userMeta.orgName || profile?.role || "Cliente";
 
   return (
     <motion.aside 
@@ -156,7 +171,7 @@ export default function Sidebar() {
                     <div className="flex flex-col gap-1">
                       <p className="text-[8px] uppercase font-black tracking-[0.2em] text-nav-text">Balance Forense</p>
                       <span className="text-xl font-black text-foreground flex items-center gap-2">
-                        100 <span className="text-xs text-erani-blue italic">ERIS</span>
+                        {erisBalance} <span className="text-xs text-erani-blue italic">ERIS</span>
                       </span>
                     </div>
                     <div className="w-10 h-10 rounded-2xl bg-erani-blue/10 flex items-center justify-center border border-erani-blue/20">
@@ -183,7 +198,7 @@ export default function Sidebar() {
                 <div className="w-12 h-12 rounded-2xl bg-foreground/5 flex items-center justify-center border border-glass-border cursor-pointer hover:bg-foreground/10 transition-colors group/eris relative">
                   <span className="text-xl group-hover:scale-110 transition-transform">💎</span>
                   <div className="absolute left-full ml-4 px-3 py-2 bg-black/90 border border-white/10 rounded-xl text-[8px] uppercase font-black tracking-widest text-white opacity-0 group-hover/eris:opacity-100 pointer-events-none transition-all -translate-x-2 group-hover/eris:translate-x-0 whitespace-nowrap z-50">
-                    100 ERIS
+                    {erisBalance} ERIS
                   </div>
                 </div>
               </div>
@@ -202,17 +217,17 @@ export default function Sidebar() {
             } ${showProfileMenu ? "bg-foreground/10 border border-glass-border shadow-lg" : "hover:bg-foreground/5"}`}
           >
             <div className="relative shrink-0">
-              <div className={`rounded-full border-2 border-erani-blue/30 p-0.5 overflow-hidden ${isCollapsed ? "w-10 h-10" : "w-11 h-11"}`}>
-                <Image src="/isologo.png" alt="Avatar" width={40} height={40} className="rounded-full object-cover logo-adaptive" />
+              <div className={`rounded-full border-2 border-erani-blue/30 p-0.5 overflow-hidden flex items-center justify-center bg-black/5 dark:bg-white/5 ${isCollapsed ? "w-10 h-10" : "w-11 h-11"}`}>
+                <img src={logoSrc} alt="Avatar" className="w-full h-full object-cover rounded-full" />
               </div>
-              <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-background" />
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-erani-coral rounded-full border-2 border-background" />
             </div>
             
             {!isCollapsed && (
               <>
                 <div className="flex flex-col items-start gap-0.5 overflow-hidden">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-foreground truncate w-full text-left">Emiliano</span>
-                  <span className="text-[8px] font-medium text-nav-text lowercase truncate w-full text-left">Admin Panel</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-foreground truncate w-full text-left">{fullName}</span>
+                  <span className="text-[8px] font-medium text-nav-text lowercase truncate w-full text-left">{orgName}</span>
                 </div>
                 <ChevronRight className={`w-4 h-4 ml-auto text-nav-text transition-transform shrink-0 ${showProfileMenu ? "rotate-90" : ""}`} />
               </>
@@ -243,7 +258,7 @@ export default function Sidebar() {
                     </button>
                   ))}
                   <div className="h-px bg-white/5 my-1 mx-2" />
-                  <button className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-erani-coral/10 text-erani-coral transition-colors w-full">
+                  <button onClick={handleLogout} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-erani-coral/10 text-erani-coral transition-colors w-full">
                     <LogOut className="w-3.5 h-3.5" />
                     <span className="text-[8px] uppercase font-black tracking-widest">LOGOUT</span>
                   </button>

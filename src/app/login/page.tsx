@@ -23,14 +23,21 @@ export default function Login() {
     setError(null);
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (authError) throw authError;
       
-      router.push('/dashboard');
+      const user = data.user;
+      const onboarded = user?.user_metadata?.onboardingCompleted;
+
+      if (onboarded) {
+        router.push('/dashboard');
+      } else {
+        router.push('/onboarding');
+      }
     } catch (err: any) {
       setError(err.message || "Error al iniciar sesión. Verifica tus credenciales.");
     } finally {

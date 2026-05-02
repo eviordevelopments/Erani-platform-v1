@@ -20,6 +20,8 @@ export const metadata: Metadata = {
   },
 };
 
+import IdleTimer from "@/components/IdleTimer";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -34,6 +36,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <DashboardProvider>
+              <IdleTimer />
               {/* Background Blobs */}
               <div className="bg-blob-purple w-[600px] h-[600px] -top-40 -right-40" />
               <div className="bg-blob-blue w-[500px] h-[500px] -bottom-20 -left-20" />

@@ -120,9 +120,9 @@ export default function DashboardPage() {
                animate={{ opacity: 1, x: 0 }}
                className="flex flex-col gap-1"
             >
-               <div className="flex items-baseline gap-3">
-                  <span className="text-2xl font-black uppercase tracking-tight text-nav-text">Bienvenido a ERANI,</span>
-                  <span className="text-4xl font-black uppercase tracking-tighter bg-gradient-to-b from-erani-blue to-erani-purple bg-clip-text text-transparent">
+               <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-3">
+                  <span className="text-xl font-bold uppercase tracking-widest text-nav-text">Bienvenido a ERANI,</span>
+                  <span className="text-4xl md:text-5xl font-black uppercase tracking-tighter bg-gradient-to-b from-erani-blue to-erani-purple bg-clip-text text-transparent">
                      {profile?.full_name || "Usuario"}
                   </span>
                </div>
@@ -155,7 +155,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {!isLive && (
+          {!isLive && !profile?.onboardingCompleted && (
              <motion.div 
                initial={{ opacity: 0, y: -20 }}
                animate={{ opacity: 1, y: 0 }}
