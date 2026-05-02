@@ -121,6 +121,7 @@ export default function Onboarding() {
         data: {
           onboardingCompleted: true,
           eris_balance: 100,
+          fullName: formData.fullName,
           orgName: formData.orgName,
           bio: formData.bio,
           sector: formData.sector,

@@ -12,7 +12,7 @@ import { Loader2, AlertCircle, Info, ArrowUpRight, TrendingUp, Layers, CheckCirc
 
 export default function DashboardPage() {
   const { insights, processingState, bentoOrder, updateBentoOrder, isSidebarCollapsed } = useDashboard();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
 
   // Dashboard state can be "live" or "demo"
   const isLive = !!insights;
@@ -106,6 +106,8 @@ export default function DashboardPage() {
     )
   }), [insights, isLive]);
 
+  const userName = profile?.full_name || user?.user_metadata?.fullName || "Usuario";
+
   return (
     <div className="min-h-screen bg-background text-foreground flex">
       <Sidebar />
@@ -121,9 +123,14 @@ export default function DashboardPage() {
                className="flex flex-col gap-1"
             >
                <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-3">
-                  <span className="text-xl font-bold uppercase tracking-widest text-nav-text">Bienvenido a ERANI,</span>
-                  <span className="text-4xl md:text-5xl font-black uppercase tracking-tighter bg-gradient-to-b from-erani-blue to-erani-purple bg-clip-text text-transparent">
-                     {profile?.full_name || "Usuario"}
+                  <span className="text-xl font-bold uppercase tracking-widest text-nav-text">
+                     Bienvenido a ERANI,{" "}
+                     <span 
+                       className="relative inline-block text-transparent bg-clip-text bg-gradient-to-r from-erani-blue via-erani-purple to-erani-coral animate-gradient-x drop-shadow-[0_0_12px_rgba(158,128,255,0.8)]"
+                       style={{ backgroundSize: '200% auto' }}
+                     >
+                        {userName}
+                     </span>
                   </span>
                </div>
             </motion.div>

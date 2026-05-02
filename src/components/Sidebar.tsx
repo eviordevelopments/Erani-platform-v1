@@ -62,7 +62,7 @@ export default function Sidebar() {
   const userMeta = user?.user_metadata || {};
   const logoSrc = profile?.avatar_url || userMeta.logoBase64 || "/isologo.png";
   const erisBalance = userMeta.eris_balance || 0;
-  const fullName = profile?.full_name || "Usuario";
+  const fullName = profile?.full_name || userMeta.fullName || "Usuario";
   const orgName = userMeta.orgName || profile?.role || "Cliente";
 
   return (
