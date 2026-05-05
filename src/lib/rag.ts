@@ -1,6 +1,6 @@
 /**
  * ERANI RAG Pipeline — File Parsing & Embedding Engine
- * Uses Google's Gemini text-embedding-004 model (768 dimensions).
+ * Uses Google's Gemini embedding-001 model (768 dimensions).
  *
  * Supported formats: PDF, XLSX, XLS, CSV, JSON
  */
@@ -9,20 +9,33 @@ import { GoogleGenerativeAI, TaskType } from "@google/generative-ai";
 import { createRequire } from "module";
 import * as xlsx from "xlsx";
 import { parse as parseCsv } from "csv-parse/sync";
-
-// pdf-parse ships CJS only — use createRequire to import in ESM/RSC context
-const require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as (buffer: Buffer) => Promise<{ text: string }>;
+import PDFParser from "pdf2json";
 
 // ── Gemini client (server-side only) ───────────────────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+// Using gemini-embedding-001 as it's verified available in your list
 const embeddingModel = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const MAX_CHUNK_CHARS  = 1000;  // Characters per chunk (safe for embedding API)
 const MAX_EMBED_BATCH  = 100;   // Max chunks per batch (Gemini limit)
-// NOTE: gemini-embedding-001 produces 3072-dimensional vectors
+const EMBEDDING_DIMS   = 768;   // Standard dimension for gemini-embedding-001
+
+/**
+ * Utility to parse PDF using pdf2json with a Promise
+ */
+async function parsePdfWithPdf2Json(buffer: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const pdfParser = new (PDFParser as any)(null, 1); // 1 = text-only mode
+
+    pdfParser.on("pdfParser_dataError", (errData: any) => reject(errData.parserError));
+    pdfParser.on("pdfParser_dataReady", () => {
+      resolve((pdfParser as any).getRawTextContent());
+    });
+
+    pdfParser.parseBuffer(buffer);
+  });
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export interface ParsedFile {
@@ -59,8 +72,8 @@ export async function extractTextFromFile(
 
   switch (extension) {
     case "pdf": {
-      const data = await pdfParse(buffer);
-      text = data.text.trim();
+      text = await parsePdfWithPdf2Json(buffer);
+      text = text.trim();
       break;
     }
 
@@ -162,14 +175,15 @@ export function chunkText(parsedFile: ParsedFile): TextChunk[] {
 
 /**
  * Generates a single embedding vector for a text string.
- * Returns a 768-dimensional float array via Gemini text-embedding-004.
+ * Returns a 768-dimensional float array via Gemini embedding-001.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   const result = await embeddingModel.embedContent({
     content: { parts: [{ text }], role: "user" },
     taskType: TaskType.RETRIEVAL_DOCUMENT,
   });
-  return result.embedding.values;
+  const values = result.embedding.values;
+  return values.length > 768 ? values.slice(0, 768) : values;
 }
 
 /**

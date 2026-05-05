@@ -10,8 +10,12 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    const organizationId = formData.get('organizationId') as string || 'a1b2c3d4-0000-0000-0000-000000000001'; // Fallback to demo org
+    const organizationId = formData.get('organizationId') as string;
     const userId = formData.get('userId') as string;
+
+    if (!organizationId) {
+      return NextResponse.json({ error: 'Organization ID is required for forensic isolation.' }, { status: 400 });
+    }
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });

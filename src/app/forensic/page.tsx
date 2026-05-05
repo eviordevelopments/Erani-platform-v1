@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ShieldAlert, 
@@ -35,6 +36,9 @@ import {
   Pie, 
   Cell 
 } from "recharts";
+import { persistForensicReport } from "@/lib/forensicPersistence";
+import { useAuth } from "@/context/AuthContext";
+
 
 // --- Types ---
 interface ForensicTicket {
@@ -46,7 +50,7 @@ interface ForensicTicket {
   status: 'execution' | 'blindspot' | 'capital_leak';
 }
 
-interface ForensicReportData {
+export interface ForensicReportData {
   projectName: string;
   impactoDirecto: number;
   impactoFuturo: number;
@@ -57,8 +61,22 @@ interface ForensicReportData {
   kpiRevisiones: number;
   kpiFriccionTalento: number;
   kpiDarkData: number;
+  resumenConsolidacion: {
+    fugaExterna: number;
+    fugaInterna: number;
+    totalConciliado: number;
+    estadoInventario: string;
+  };
+  cegueraOperativa: string;
+  firewallProtocolos: string;
+  firewallRoi: number;
+  anexoFrameworks: string[];
+  anexoGlosario: string[];
   firewallImpact: { month: string; value: number }[];
   margenEvolucion: { month: string; value: string; desc: string }[];
+  aiModel?: string;
+  projectSize?: string;
+  erisCost?: number;
 }
 
 const INITIAL_DATA: ForensicReportData = {
@@ -72,63 +90,220 @@ const INITIAL_DATA: ForensicReportData = {
   kpiRevisiones: 0,
   kpiFriccionTalento: 0,
   kpiDarkData: 0,
+  resumenConsolidacion: {
+    fugaExterna: 0,
+    fugaInterna: 0,
+    totalConciliado: 0,
+    estadoInventario: "Esperando análisis de Gemini..."
+  },
+  cegueraOperativa: "Análisis en proceso...",
+  firewallProtocolos: "Pendiente de definición estratégica.",
+  firewallRoi: 0,
+  anexoFrameworks: [],
+  anexoGlosario: [],
   firewallImpact: [
-    { month: "Mes 1", value: 0 },
-    { month: "Mes 2", value: 0 },
-    { month: "Mes 3", value: 0 },
+    { month: "Mes 1", value: 10 },
+    { month: "Mes 2", value: 25 },
+    { month: "Mes 3", value: 30 },
   ],
   margenEvolucion: [
-    { month: "Mes 1", value: "0%", desc: "Control de Fugas" },
-    { month: "Mes 2", value: "0%", desc: "Visibilidad 100%" },
-    { month: "Mes 3", value: "0%", desc: "Rentabilidad Estabilizada" },
-  ]
+    { month: "Mes 1", value: "10%", desc: "Control de Fugas" },
+    { month: "Mes 2", value: "22%", desc: "Visibilidad 100%" },
+    { month: "Mes 3", value: "30%", desc: "Rentabilidad Estabilizada" },
+  ],
+  aiModel: "Motor de Inferencia ERANI V1",
+  projectSize: "medium",
+  erisCost: 30
 };
 
 type TabId = "scorecard" | "analysis" | "kpis" | "firewall" | "annex";
 
 export default function ForensicPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <div className="w-12 h-12 border-4 border-erani-blue/20 border-t-erani-blue rounded-full animate-spin" />
+        <p className="text-[10px] uppercase font-black tracking-widest text-gray-500">Cargando Módulo Forense...</p>
+      </div>
+    }>
+      <ForensicContent />
+    </Suspense>
+  );
+}
+
+function ForensicContent() {
   const { isSidebarCollapsed } = useDashboard();
+  const { user, profile } = useAuth();
+  const searchParams = useSearchParams();
+  const reportId = searchParams.get("id");
+  const timestamp = searchParams.get("t");
+  
   const [activeTab, setActiveTab] = useState<TabId>("scorecard");
   const [data, setData] = useState<ForensicReportData>(INITIAL_DATA);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>("Iniciando...");
+
+  const organizationId = profile?.organization_id;
 
   useEffect(() => {
-    fetchForensicData();
-  }, []);
+    if (user && profile) {
+      fetchForensicData();
+    }
+  }, [reportId, timestamp, user, profile]);
 
-  const fetchForensicData = async () => {
+  const fetchForensicData = async (retries = 4) => {
     try {
+      console.log(`[Hydration] Starting fetch for reportId: ${reportId}, attempt: ${5 - retries}`);
       setLoading(true);
-      // In a real scenario, we would fetch by organization_id or similar
-      const { data: report, error } = await supabase
-        .from('forensic_reports')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+      setFetchError(null);
+      setStatusMessage(`Consultando Supabase (Intento ${5 - retries}/5)...`);
+
+      let query = supabase.from('forensic_reports').select('*');
+
+      if (reportId) {
+        // Fallback logic: Try ID first, then project_id if ID looks like a custom slug
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reportId);
+        const isNumeric = /^\d+$/.test(reportId);
+
+        if (isUuid || isNumeric) {
+          console.log(`[Hydration] Searching by Primary Key (id): ${reportId}`);
+          query = query.eq('id', reportId);
+        } else {
+          console.log(`[Hydration] Searching by Project Identifier (project_id): ${reportId}`);
+          query = query.eq('project_id', reportId);
+        }
+      } else {
+        console.log(`[Hydration] No ID provided, fetching latest report`);
+        query = query.order('created_at', { ascending: false }).limit(1);
+      }
+
+      const { data: result, error } = await query.single();
 
       if (error) {
-        console.error("Error fetching forensic data:", error);
-      } else if (report) {
-        setData({
-          projectName: report.project_name || "PROYECTO SIN NOMBRE",
-          impactoDirecto: report.impacto_directo || 0,
-          impactoFuturo: report.impacto_futuro || 0,
-          scopeCreep: report.scope_creep || 0,
-          rentabilidadPoint: report.rentabilidad_point || 0,
-          coiAnual: report.coi_anual || 0,
-          tickets: report.tickets || [],
-          kpiRevisiones: report.kpi_revisiones || 0,
-          kpiFriccionTalento: report.kpi_friccion_talento || 0,
-          kpiDarkData: report.kpi_dark_data || 0,
-          firewallImpact: report.firewall_impact || INITIAL_DATA.firewallImpact,
-          margenEvolucion: report.margen_evolucion || INITIAL_DATA.margenEvolucion
-        });
+        console.error(`[Hydration Error] Supabase says:`, error);
+        
+        // If not found by ID, and we haven't tried project_id yet, try it
+        if (error.code === 'PGRST116' && reportId && !reportId.startsWith('PRJ-')) {
+           console.log(`[Hydration] Not found by ID, trying as project_id fallback...`);
+           const fallback = await supabase.from('forensic_reports').select('*').eq('project_id', reportId).single();
+           if (!fallback.error) {
+             mapData(fallback.data);
+             return;
+           }
+        }
+
+        if (retries > 0 && (error.message.includes("fetch") || error.message.includes("network") || error.code === 'PGRST116')) {
+          setStatusMessage("Reporte no listo aún. Reintentando sincronización...");
+          console.warn(`[Hydration] Retrying fetch in 2s... ${retries} attempts left`);
+          await new Promise(r => setTimeout(r, 2000));
+          return fetchForensicData(retries - 1);
+        }
+        
+        setFetchError({
+          message: error.message || "Reporte no encontrado",
+          code: error.code,
+          details: `No se encontró el reporte con ID ${reportId}. Es posible que la base de datos esté tardando en indexar.`
+        } as any);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error("System error:", err);
+
+      if (result) {
+        setStatusMessage("Mapeando evidencia forense...");
+        console.log(`[Hydration] Successfully retrieved report:`, result.id);
+        const mappedData = mapData(result);
+        
+        // AUTO-PERSIST: If no PDF exists yet, generate and save it
+        if (!result.pdf_url && mappedData) {
+          setStatusMessage("Persistiendo reporte en Supabase...");
+          persistForensicReport(result.id, mappedData, organizationId || undefined);
+        }
+      } else {
+        setFetchError("El resultado de la base de datos fue nulo." as any);
+      }
+    } catch (err: any) {
+      console.error("[Hydration Critical] System failure:", err);
+      const isNetworkError = err.message?.toLowerCase().includes("fetch") || err.message?.toLowerCase().includes("network");
+      
+      if (retries > 0 && isNetworkError) {
+        console.warn(`[Hydration] Retrying system catch in 2s... ${retries} attempts left`);
+        await new Promise(r => setTimeout(r, 2000));
+        return fetchForensicData(retries - 1);
+      }
+      
+      setFetchError({
+        message: "Error crítico de comunicación con la base de datos.",
+        code: "NETWORK_FAILURE",
+        details: err.message
+      } as any);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const mapData = (report: any) => {
+    try {
+      console.log(`[Mapping] Transforming record:`, report.id);
+      const p = report.payload_completo || {};
+      
+      const mapped: ForensicReportData = {
+        projectName: p.report_metadata?.project_name || report.project_name || "PROYECTO SIN NOMBRE",
+        impactoDirecto: p.slide_1_impacto_directo?.fuga_confirmada_mxn || report.impacto_directo || 0,
+        impactoFuturo: p.slide_1_impacto_directo?.riesgo_latente_mensual_mxn || report.impacto_futuro || 0,
+        scopeCreep: p.slide_1_impacto_directo?.desviacion_scope_creep_pct || report.scope_creep || 0,
+        rentabilidadPoint: p.slide_1_impacto_directo?.punto_conciencia_rentabilidad_mxn || report.rentabilidad_point || 0,
+        coiAnual: p.slide_1_impacto_directo?.coi_anual_mxn || report.coi_anual || 0,
+        
+        tickets: (p.slide_2_analisis_forense?.top_5_tickets || report.tickets || []).map((t: any) => ({
+          id: t.ticket_id || t.id || Math.random().toString(36).substr(2, 9),
+          description: t.descripcion || t.description || "Sin descripción",
+          filter: t.filtro || t.filter || "General",
+          hrs: t.hrs_calc || t.hrs || 0,
+          cost: t.costo_invisible_mxn || t.cost || 0,
+          status: (t.costo_invisible_mxn || t.cost) > 5000 ? 'capital_leak' : ((t.hrs_calc || t.hrs) > 10 ? 'blindspot' : 'execution')
+        })),
+
+        resumenConsolidacion: {
+          fugaExterna: p.slide_2_analisis_forense?.resumen_consolidacion?.fuga_externa_mxn || 0,
+          fugaInterna: p.slide_2_analisis_forense?.resumen_consolidacion?.fuga_internal_mxn || 0,
+          totalConciliado: p.slide_2_analisis_forense?.resumen_consolidacion?.total_conciliado_monto_mxn || 0,
+          estadoInventario: p.slide_2_analisis_forense?.resumen_consolidacion?.estado_inventario_desc || ""
+        },
+
+        kpiRevisiones: p.slide_3_kpis_salud?.monitor_bucle_pct || report.kpi_revisiones || 0,
+        kpiFriccionTalento: p.slide_3_kpis_salud?.indice_friccion_pct || report.kpi_friccion_talento || 0,
+        kpiDarkData: p.slide_3_kpis_salud?.dark_data_index_pct || report.kpi_dark_data || 0,
+        cegueraOperativa: p.slide_3_kpis_salud?.analisis_ceguera_operativa || "",
+
+        firewallProtocolos: p.slide_4_estrategia_firewall?.protocolos_bloqueo || report.firewall_protocolos || "",
+        firewallRoi: p.slide_4_estrategia_firewall?.roi_dias || report.firewall_roi || 0,
+
+        anexoFrameworks: p.slide_5_anexo_sustento?.frameworks || report.anexo_frameworks || [],
+        anexoGlosario: p.slide_5_anexo_sustento?.glosario || report.anexo_glosario || [],
+        
+        firewallImpact: [
+          { month: "Inicia", value: 0 },
+          { month: "Mes 1",  value: (p.slide_4_estrategia_firewall?.roi_dias < 30) ? 65 : 45 },
+          { month: "Mes 2",  value: 85 },
+          { month: "Mes 3",  value: 100 }
+        ],
+        margenEvolucion: [
+          { month: "Mes 1", value: `${Math.round((p.slide_4_estrategia_firewall?.proyeccion_margen_pct || 30) * 0.4)}%`, desc: "Control de Fugas" },
+          { month: "Mes 2", value: `${Math.round((p.slide_4_estrategia_firewall?.proyeccion_margen_pct || 30) * 0.7)}%`, desc: "Visibilidad 100%" },
+          { month: "Mes 3", value: `${(p.slide_4_estrategia_firewall?.proyeccion_margen_pct || 30)}%`, desc: "Rentabilidad Estabilizada" },
+        ],
+        aiModel: "Motor de Inferencia ERANI V1",
+        projectSize: p.report_metadata?.project_size || report.project_size || 'medium',
+        erisCost: (p.report_metadata?.project_size || report.project_size) === 'small' ? 15 : (p.report_metadata?.project_size || report.project_size) === 'large' ? 45 : 30
+      };
+
+      setData(mapped);
+      console.log(`[Mapping] Success. Engine detected: Motor de Inferencia ERANI V1`);
+      return mapped;
+    } catch (mapErr) {
+      console.error("[Mapping Error] Failed to parse payload:", mapErr);
+      return null;
     }
   };
 
@@ -140,11 +315,64 @@ export default function ForensicPage() {
     { id: "annex", label: "Anexo Técnico", icon: FileText },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex flex-col h-screen bg-background overflow-hidden">
+        <Sidebar />
+        <main className={`flex-1 transition-all duration-500 flex flex-col items-center justify-center gap-6 ${isSidebarCollapsed ? "ml-20" : "ml-64"}`}>
+          <div className="relative">
+            <div className="w-20 h-20 border-2 border-erani-blue/10 border-t-erani-blue rounded-full animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Cpu className="w-8 h-8 text-erani-blue animate-pulse" />
+            </div>
+          </div>
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-black uppercase tracking-[0.2em] text-white">Sincronizando Reporte</h2>
+            <p className="text-[10px] text-erani-blue font-bold uppercase tracking-widest animate-pulse">{statusMessage}</p>
+            <p className="text-[9px] text-gray-600 uppercase tracking-widest mt-2">ID: {reportId || "Último disponible"}</p>
+          </div>
+          
+          <button 
+            onClick={() => setLoading(false)}
+            className="mt-8 text-[8px] text-gray-600 uppercase tracking-[0.3em] hover:text-white transition-colors"
+          >
+            Saltar Espera (Modo Debug)
+          </button>
+        </main>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="flex flex-col h-screen bg-background overflow-hidden">
+        <Sidebar />
+        <main className={`flex-1 transition-all duration-500 flex flex-col items-center justify-center p-8 ${isSidebarCollapsed ? "ml-20" : "ml-64"}`}>
+          <div className="max-w-md w-full bg-[#0d0d0d] border border-red-900/30 p-8 rounded-2xl text-center space-y-6">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+              <ShieldAlert className="w-8 h-8 text-red-500" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold text-white uppercase tracking-wider">Error de Hidratación</h2>
+              <p className="text-sm text-gray-400">{(fetchError as any).message || "No se pudo sincronizar el reporte."}</p>
+            </div>
+            <button 
+              onClick={() => fetchForensicData()}
+              className="w-full py-4 bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-200 transition-colors rounded-xl"
+            >
+              Reintentar Sincronización
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground flex">
       <Sidebar />
 
-      <main className={`flex-1 transition-all duration-300 ${isSidebarCollapsed ? "ml-[104px]" : "ml-[296px]"} p-8 relative overflow-x-hidden`}>
+      <main className={`flex-1 transition-all duration-300 ${isSidebarCollapsed ? "ml-[112px]" : "ml-[312px]"} p-10 lg:p-14 relative overflow-x-hidden`}>
         {/* Background Gradients */}
         <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-erani-blue/10 blur-[150px] rounded-full pointer-events-none -z-10" />
         <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-[#9e80ff]/10 blur-[120px] rounded-full pointer-events-none -z-10" />
@@ -172,7 +400,7 @@ export default function ForensicPage() {
                      <div className="flex flex-col">
                        <span className="text-[8px] uppercase font-black tracking-widest text-gray-500">Motor de IA Utilizado</span>
                         <span className="text-[10px] font-black text-foreground">
-                         {data.projectName.includes('PRO') ? 'Gemini 1.5 Pro' : 'Gemini 1.5 Flash'}
+                         {data.aiModel || "Motor de Inferencia ERANI V1"}
                        </span>
                      </div>
                    </div>
@@ -183,12 +411,12 @@ export default function ForensicPage() {
                      <div className="flex flex-col">
                        <span className="text-[8px] uppercase font-black tracking-widest text-gray-500">Costo de Auditoría</span>
                         <span className="text-[10px] font-black text-erani-blue">
-                         5.0 ERIS
+                         {data.erisCost ? `${data.erisCost.toFixed(1)} ERIS` : "30.0 ERIS"}
                        </span>
                      </div>
                    </div>
 
-                    <ReportDownloader targetId="forensic-scorecard-grid" />
+                    <ReportDownloader data={data} />
                  </div>
             </div>
 
@@ -213,21 +441,74 @@ export default function ForensicPage() {
 
           {/* Main Content Area */}
           <AnimatePresence mode="wait">
-             <motion.div
-               key={activeTab}
-               initial={{ opacity: 0, x: 20 }}
-               animate={{ opacity: 1, x: 0 }}
-               exit={{ opacity: 0, x: -20 }}
-               transition={{ duration: 0.3, ease: "easeOut" }}
-             >
+             {loading ? (
+               <motion.div
+                 key="loading"
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 exit={{ opacity: 0 }}
+                 className="flex flex-col items-center justify-center py-20 gap-4"
+               >
+                 <div className="w-12 h-12 border-4 border-erani-blue/20 border-t-erani-blue rounded-full animate-spin" />
+                 <p className="text-[10px] uppercase font-black tracking-widest text-gray-500 animate-pulse">
+                   Recuperando Peritaje Forense...
+                 </p>
+               </motion.div>
+             ) : fetchError ? (
+               <motion.div
+                 key="error"
+                 initial={{ opacity: 0, y: 20 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 className="flex flex-col items-center justify-center py-20 px-8 rounded-3xl bg-red-500/5 border border-red-500/20 gap-6 text-center"
+               >
+                 <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+                   <AlertTriangle className="w-8 h-8 text-red-500" />
+                 </div>
+                 <div className="flex flex-col gap-2">
+                    <h3 className="text-xl font-black uppercase tracking-tight text-foreground">
+                      {fetchError?.includes("conexión") ? "Fallo de Comunicación" : "Error de Acceso a Datos"}
+                    </h3>
+                    <p className="text-sm text-gray-500 max-w-md">
+                      {fetchError || "No se pudo recuperar el reporte."}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-4 p-6 bg-foreground/5 rounded-2xl border border-glass-border text-left w-full max-w-2xl">
+                     <p className="text-[10px] uppercase font-black tracking-widest text-erani-purple">Diagnóstico Erani:</p>
+                      <p className="text-[11px] text-gray-400">
+                        {(typeof fetchError === 'object' && (fetchError as any).code === 'NETWORK_FAILURE')
+                          ? "Detectamos un fallo de red o DNS. Revisa tu conexión o configuración de proxy."
+                          : "Si el reporte existe en Supabase pero no se carga, verifica que las políticas RLS permitan el acceso. En desarrollo puedes usar:"}
+                      </p>
+                      {(typeof fetchError === 'object' && (fetchError as any).code !== 'NETWORK_FAILURE') && (
+                        <code className="text-[10px] font-mono text-gray-400 bg-black/20 p-4 rounded-xl break-all">
+                          {`ALTER POLICY "Enable read access for all users" ON "public"."forensic_reports" TO anon USING (true);`}
+                        </code>
+                      )}
+                  </div>
+                 <button 
+                   onClick={() => fetchForensicData()}
+                   className="px-8 py-3 rounded-xl bg-foreground text-background text-[10px] uppercase font-black tracking-widest hover:bg-foreground/90 transition-all"
+                 >
+                   Reintentar Conexión
+                 </button>
+               </motion.div>
+             ) : (
+               <motion.div
+                 key={activeTab}
+                 initial={{ opacity: 0, y: 20 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: -20 }}
+                 transition={{ duration: 0.3, ease: "easeOut" }}
+               >
                  <div id="forensic-scorecard-grid">
                     {activeTab === "scorecard" && <ScoreCardTab data={data} />}
-                    {activeTab === "analysis" && <AnalysisTab tickets={data.tickets} />}
+                    {activeTab === "analysis" && <AnalysisTab tickets={data.tickets} data={data} />}
                     {activeTab === "kpis" && <HealthKpisTab data={data} />}
                     {activeTab === "firewall" && <FirewallTab data={data} />}
-                    {activeTab === "annex" && <AnnexTab />}
+                    {activeTab === "annex" && <AnnexTab data={data} />}
                  </div>
-             </motion.div>
+               </motion.div>
+             )}
           </AnimatePresence>
 
           <footer className="mt-12 flex justify-between items-center opacity-30 text-[9px] uppercase font-bold tracking-[0.3em] text-gray-400">
@@ -264,19 +545,19 @@ function AnimatedNumber({ value, suffix = "", prefix = "", decimals = 0 }: { val
     return () => clearInterval(timer);
   }, [value]);
 
-  return <span>{prefix}{displayValue.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}</span>;
+  return <span>{prefix}{displayValue.toLocaleString('es-MX', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}</span>;
 }
 
 function ScoreCardTab({ data }: { data: ForensicReportData }) {
   return (
     <div className="grid grid-cols-12 gap-8 items-start">
       {/* Left Column: Title Section */}
-      <div className="col-span-12 lg:col-span-4 flex flex-col justify-center gap-5 py-8 overflow-hidden">
+      <div className="col-span-12 lg:col-span-4 flex flex-col justify-center gap-5 py-8">
           <motion.div 
             initial={{ scale: 0.8, opacity: 0, rotate: -20 }}
             animate={{ scale: 1, opacity: 1, rotate: 12 }}
             transition={{ type: "spring", damping: 10 }}
-            className="w-14 h-14 rounded-2xl bg-erani-purple/10 flex items-center justify-center border border-erani-purple/20 shadow-lg shadow-erani-purple/10"
+            className="w-14 h-14 rounded-2xl bg-erani-purple/10 flex items-center justify-center border border-erani-purple/20 shadow-lg shadow-erani-purple/10 ml-2"
           >
              <TrendingUp className="w-7 h-7 text-erani-purple" />
           </motion.div>
@@ -372,7 +653,7 @@ function ScoreCardTab({ data }: { data: ForensicReportData }) {
   );
 }
 
-function AnalysisTab({ tickets }: { tickets: ForensicTicket[] }) {
+function AnalysisTab({ tickets, data }: { tickets: ForensicTicket[], data: ForensicReportData }) {
   const getStatusColor = (status: ForensicTicket['status']) => {
     switch(status) {
       case 'execution': return 'bg-emerald-500';
@@ -434,24 +715,23 @@ function AnalysisTab({ tickets }: { tickets: ForensicTicket[] }) {
                 </tfoot>
              )}
           </table>
-       </div>
-
-       <div className="flex justify-between items-start gap-12 px-8">
-          <div className="flex flex-col gap-4 max-w-2xl text-[10px] font-bold leading-relaxed text-gray-500">
-             <p>Fuga Externa (Cliente): $8,400.00 (Focus Group y Validaciones no previstas).</p>
-             <p>Fuga Interna (Equipo): $8,400.00 (Deuda técnica y bugs de integración).</p>
-             <p className="opacity-50 font-medium">Estado del Inventario: De los {tickets.length} tickets totales, 11 han sido liquidados (Fuga Confirmada) y 15 permanecen en "To Do/In Process", representando un Riesgo Latente de $24,300.00 que aún no se ha detenido.</p>
-          </div>
-          <div className="flex flex-col gap-3">
-             {[
-               { label: "Desviación con evidencia directa de ejecución", color: "bg-emerald-500" },
-               { label: "Trabajo ejecutado sin registro (Blind Spot operativo)", color: "bg-amber-500" },
-               { label: "Fuga de capital por falta de cierre o desviación masiva", color: "bg-erani-coral" },
-             ].map((leg, i) => (
-               <div key={i} className="flex items-center gap-3 text-[9px] uppercase font-black tracking-widest text-gray-400">
-                  <div className={`w-3 h-3 rounded-full ${leg.color}`} /> {leg.label}
-               </div>
-             ))}
+          <div className="flex justify-between items-start gap-12 px-8 py-8 border-t border-white/5">
+             <div className="flex flex-col gap-4 max-w-2xl text-[10px] font-bold leading-relaxed text-gray-500">
+                <p>Fuga Externa (Cliente): <AnimatedNumber value={data.resumenConsolidacion.fugaExterna} prefix="$" suffix=".00 MXN" /></p>
+                <p>Fuga Interna (Equipo): <AnimatedNumber value={data.resumenConsolidacion.fugaInterna} prefix="$" suffix=".00 MXN" /></p>
+                <p className="opacity-50 font-medium">Estado del Inventario: {data.resumenConsolidacion.estadoInventario}</p>
+             </div>
+             <div className="flex flex-col gap-3">
+                {[
+                  { label: "Desviación con evidencia directa de ejecución", color: "bg-emerald-500" },
+                  { label: "Trabajo ejecutado sin registro (Blind Spot operativo)", color: "bg-amber-500" },
+                  { label: "Fuga de capital por falta de cierre o desviación masiva", color: "bg-erani-coral" },
+                ].map((leg, i) => (
+                  <div key={i} className="flex items-center gap-3 text-[9px] uppercase font-black tracking-widest text-gray-400">
+                     <div className={`w-3 h-3 rounded-full ${leg.color}`} /> {leg.label}
+                  </div>
+                ))}
+             </div>
           </div>
        </div>
     </div>
@@ -474,7 +754,6 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
                   <AnimatedNumber value={data.kpiRevisiones} suffix="%" />
                 </div>
                 <div className="absolute inset-0 flex items-center justify-center opacity-20">
-                   {/* Simplified Donut Visual */}
                    <motion.div 
                      initial={{ rotate: 0 }}
                      animate={{ rotate: 360 }}
@@ -484,7 +763,7 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
                 </div>
              </div>
              <p className="text-[10px] font-bold text-gray-500 leading-relaxed text-center">
-                Umbral SODA superado. Las tareas están regresando a revisión más de lo tolerable, indicando falta de claridad en el SOW original.
+                {data.cegueraOperativa || "Inferencia de bucles en proceso..."}
              </p>
           </div>
 
@@ -505,7 +784,7 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
                       />
                    </div>
                    <p className="text-[9px] font-medium text-gray-600 leading-relaxed">
-                     La mayoría de los tickets presentan una latencia superior a 72 horas desde su creación hasta su última actualización, indicando "Ceguera Operativa".
+                     Análisis de latencia operativa detectado por el motor Erani.
                    </p>
                 </div>
                 <div className="flex flex-col gap-6">
@@ -523,7 +802,7 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
                       />
                    </div>
                    <p className="text-[9px] font-medium text-gray-600 leading-relaxed">
-                     ERANI tuvo que iluminar la totalidad de la metadata mediante Inferencia de Nivel 2 debido a la ausencia absoluta de registros manuales (0% logs).
+                     Detección de metadata no registrada manualmente.
                    </p>
                 </div>
              </div>
@@ -532,7 +811,7 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
                 <div className="flex flex-col gap-2 max-w-md">
                    <span className="text-[10px] uppercase font-black tracking-widest text-gray-300">Intensidad de Scope Creep</span>
                    <p className="text-[9px] font-medium text-gray-600 leading-relaxed">
-                     La mitad de la fuga es atribuible directamente a solicitudes externas ([EXT]) que no estaban presupuestadas como horas de consultoría/ajuste.
+                     Desviación presupuestal por solicitudes fuera de SOW.
                    </p>
                 </div>
                 <div className="flex items-center gap-6">
@@ -546,12 +825,6 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
                         animate={{ width: `${data.scopeCreep}%` }}
                         transition={{ duration: 1.2, ease: "circOut" }}
                         className="absolute left-0 top-0 bottom-0 bg-[#9e80ff]/30 rounded-full" 
-                      />
-                      <motion.div 
-                        initial={{ left: 0 }}
-                        animate={{ left: `${data.scopeCreep}%` }}
-                        transition={{ duration: 1.2, ease: "circOut" }}
-                        className="absolute top-0 bottom-0 border-r-4 border-[#9e80ff] h-full rounded-r-full" 
                       />
                    </div>
                 </div>
@@ -577,7 +850,7 @@ function FirewallTab({ data }: { data: ForensicReportData }) {
                 <span className="text-[10px] uppercase font-black tracking-widest">Protocolos de Bloqueo</span>
              </div>
              <p className="text-[11px] font-bold text-gray-500 leading-relaxed">
-                Implementación de un Middleware de IA para interceptar tickets de ClickUp. Si un ticket no tiene "Time Estimate" o pertenece a "Focus Group" sin orden de cambio, el sistema enviará una Alerta de Intruso inmediata.
+                {data.firewallProtocolos}
              </p>
           </div>
           <div className="glassmorphism p-8 rounded-[2.5rem] border border-glass-border flex flex-col gap-4">
@@ -586,8 +859,8 @@ function FirewallTab({ data }: { data: ForensicReportData }) {
                 <span className="text-[10px] uppercase font-black tracking-widest">ROI de Automatización</span>
              </div>
              <p className="text-[11px] font-bold text-gray-500 leading-relaxed">
-                Al detener el "Pilón" sistemático, la inversión en el Firewall se recupera en los primeros 21 días de operación blindada. <br /><br />
-                Se proyecta una estabilización del margen neto al +30% para el tercer mes, eliminando la hemorragia por retrabajos técnicos.
+                Al detener el "Pilón" sistemático, la inversión en el Firewall se recupera en los primeros {data.firewallRoi} días de operación blindada. <br /><br />
+                Se proyecta una estabilización del margen neto optimizada según el análisis forense.
              </p>
           </div>
        </div>
@@ -649,17 +922,53 @@ function FirewallTab({ data }: { data: ForensicReportData }) {
   );
 }
 
-function AnnexTab() {
+function AnnexTab({ data }: { data: ForensicReportData }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] gap-6 opacity-30">
-       <FileText className="w-16 h-16 text-gray-600" />
-       <div className="flex flex-col items-center gap-2">
-          <span className="text-xs uppercase font-black tracking-[0.5em] text-gray-500">Anexo Técnico Detallado</span>
-          <p className="text-[10px] font-bold text-gray-600">Exportación de Metadata Cruda para Auditoría Externa</p>
+    <div className="flex flex-col gap-10">
+       <div className="grid grid-cols-2 gap-10">
+          <div className="flex flex-col gap-6">
+             <h4 className="text-sm font-black uppercase tracking-widest text-erani-purple flex items-center gap-3">
+                <ShieldAlert className="w-4 h-4" />
+                Frameworks de Sustento
+             </h4>
+             <ul className="flex flex-col gap-3">
+                {data.anexoFrameworks.length > 0 ? data.anexoFrameworks.map((f, i) => (
+                  <li key={i} className="text-[10px] font-bold text-gray-400 flex items-start gap-3">
+                     <div className="w-1.5 h-1.5 rounded-full bg-erani-purple mt-1 flex-shrink-0" />
+                     {f}
+                  </li>
+                )) : (
+                  <li className="text-[10px] font-medium text-gray-600">Cargando marcos metodológicos...</li>
+                )}
+             </ul>
+          </div>
+          <div className="flex flex-col gap-6">
+             <h4 className="text-sm font-black uppercase tracking-widest text-erani-blue flex items-center gap-3">
+                <FileText className="w-4 h-4" />
+                Glosario de Términos
+             </h4>
+             <ul className="flex flex-col gap-3">
+                {data.anexoGlosario.length > 0 ? data.anexoGlosario.map((g, i) => (
+                  <li key={i} className="text-[10px] font-bold text-gray-400 flex items-start gap-3">
+                     <div className="w-1.5 h-1.5 rounded-full bg-erani-blue mt-1 flex-shrink-0" />
+                     {g}
+                  </li>
+                )) : (
+                  <li className="text-[10px] font-medium text-gray-600">Cargando glosario técnico...</li>
+                )}
+             </ul>
+          </div>
        </div>
-       <button className="px-8 py-4 rounded-xl border border-dashed border-white/10 text-[10px] font-black uppercase tracking-widest hover:border-white/30 transition-all">
-          Generar PDF de Evidencia
-       </button>
+       
+       <div className="flex flex-col items-center justify-center py-10 gap-6 opacity-50 border-t border-white/5 mt-10">
+          <div className="flex flex-col items-center gap-2">
+             <span className="text-xs uppercase font-black tracking-[0.5em] text-gray-500">Anexo Técnico Detallado</span>
+             <p className="text-[10px] font-bold text-gray-600">Exportación de Metadata Cruda para Auditoría Externa</p>
+          </div>
+          <button className="px-8 py-4 rounded-xl border border-dashed border-white/10 text-[10px] font-black uppercase tracking-widest hover:border-white/30 transition-all">
+             Generar PDF de Evidencia
+          </button>
+       </div>
     </div>
   );
 }

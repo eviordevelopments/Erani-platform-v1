@@ -1,7 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import type { InsightData } from "@/lib/insightEngine";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "./AuthContext";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -117,61 +119,92 @@ const DashboardContext = createContext<DashboardContextType>({
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export const DashboardProvider = ({ children }: { children: React.ReactNode }) => {
-  const [state, setState] = useState<DashboardState>({
-    processingState: "idle",
-    processingStep: "",
-    processingProgress: 0,
-    uploadedFiles: [],
-    insights: null,
-    sessions: [],
-    bentoOrder: DEFAULT_BENTO_ORDER,
-    feedback: [],
-    automations: [
-      {
-        id: "1",
-        name: "Protección de Fugitividad de Capital",
-        description: "Detección en tiempo real de transferencias no autorizadas y alertas de liquidez.",
-        status: "active",
-        category: "financiera",
-        roi_projection: 320,
-        hours_saved_monthly: 45,
-        n8n_id: "flow_001",
-        last_run: new Date()
-      },
-      {
-        id: "2",
-        name: "Auditoría Automática de Jira",
-        description: "Sincronización forense de logs de actividad para detectar Scope Creep.",
-        status: "active",
-        category: "forense",
-        roi_projection: 150,
-        hours_saved_monthly: 12,
-        n8n_id: "flow_002",
-        last_run: new Date()
-      },
-      {
-        id: "3",
-        name: "Conciliación Bancaria IA",
-        description: "Match inteligente de facturas vs depósitos bancarios mediante GPT-4o.",
-        status: "inactive",
-        category: "financiera",
-        roi_projection: 480,
-        hours_saved_monthly: 60,
-        n8n_id: "flow_003"
-      }
-    ],
-  });
+  const { profile } = useAuth();
+  const [hasFetched, setHasFetched] = useState(false);
 
-  const [preferences, setPreferences] = useState<UserPreferences>({
-    font_size: 16,
-    theme_color: "#0055A0",
-    custom_logo_url: null,
-  });
+  // ─── Fetch from Supabase on mount ──────────────────────────────────────────
+  useEffect(() => {
+    if (profile && !hasFetched) {
+      const fetchData = async () => {
+        try {
+          const { data: prefs, error } = await supabase
+            .from('user_preferences')
+            .select('*')
+            .eq('user_id', profile.id)
+            .single();
+          
+          if (error && error.code !== 'PGRST116') {
+            console.error("Error fetching preferences:", error);
+          }
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+          if (prefs) {
+            setPreferences({
+              font_size: prefs.font_size || 16,
+              theme_color: prefs.theme_color || "#0055A0",
+              custom_logo_url: prefs.custom_logo_url || null,
+            });
+            setState(prev => ({
+              ...prev,
+              bentoOrder: prefs.bento_order || DEFAULT_BENTO_ORDER,
+            }));
+          }
+          // Fetch Feedback
+          const { data: feedbackData } = await supabase
+            .from('feedback')
+            .select('*')
+            .eq('organization_id', profile.organization_id)
+            .order('created_at', { ascending: false });
+          
+          if (feedbackData) {
+            setState(prev => ({
+              ...prev,
+              feedback: feedbackData.map(f => ({
+                id: f.id,
+                title: f.title,
+                description: f.description,
+                type: f.type,
+                status: f.status,
+                priority: f.priority,
+                reportedBy: f.reported_by,
+                createdAt: new Date(f.created_at)
+              }))
+            }));
+          }
+
+          // Fetch Automations
+          const { data: automationsData } = await supabase
+            .from('automations')
+            .select('*')
+            .eq('organization_id', profile.organization_id);
+          
+          if (automationsData && automationsData.length > 0) {
+            setState(prev => ({
+              ...prev,
+              automations: automationsData.map(a => ({
+                id: a.id,
+                name: a.name,
+                description: a.description,
+                status: a.status,
+                category: a.category,
+                roi_projection: a.roi_projection,
+                hours_saved_monthly: a.hours_saved_monthly,
+                n8n_id: a.n8n_id,
+                last_run: a.last_run ? new Date(a.last_run) : undefined
+              }))
+            }));
+          }
+        } catch (err) {
+          console.error("Unexpected error in DashboardContext:", err);
+        } finally {
+          setHasFetched(true);
+        }
+      };
+      fetchData();
+    }
+  }, [profile, hasFetched]);
 
   // Apply preferences as CSS variables
-  React.useEffect(() => {
+  useEffect(() => {
     document.documentElement.style.setProperty('--platform-font-size', `${preferences.font_size}px`);
     document.documentElement.style.setProperty('--platform-theme-color', preferences.theme_color);
   }, [preferences]);
@@ -221,34 +254,101 @@ export const DashboardProvider = ({ children }: { children: React.ReactNode }) =
 
   const updateBentoOrder = useCallback((order: string[]) => {
     setState((prev) => ({ ...prev, bentoOrder: order }));
-  }, []);
+    if (profile) {
+      supabase
+        .from('user_preferences')
+        .upsert({ 
+          user_id: profile.id, 
+          bento_order: order,
+          updated_at: new Date().toISOString()
+        })
+        .then(({ error }) => {
+          if (error) console.error("Error saving bento order:", error);
+        });
+    }
+  }, [profile]);
 
   const updatePreferences = useCallback((prefs: Partial<UserPreferences>) => {
-    setPreferences((prev) => ({ ...prev, ...prefs }));
-  }, []);
+    setPreferences((prev) => {
+      const newPrefs = { ...prev, ...prefs };
+      if (profile) {
+        supabase
+          .from('user_preferences')
+          .upsert({ 
+            user_id: profile.id, 
+            ...newPrefs,
+            updated_at: new Date().toISOString()
+          })
+          .then(({ error }) => {
+            if (error) console.error("Error saving preferences:", error);
+          });
+      }
+      return newPrefs;
+    });
+  }, [profile]);
 
   const addFeedback = useCallback((item: FeedbackItem) => {
     setState((prev) => ({
       ...prev,
       feedback: [item, ...prev.feedback],
     }));
-  }, []);
+    if (profile?.organization_id) {
+      supabase
+        .from('feedback')
+        .insert({
+          organization_id: profile.organization_id,
+          title: item.title,
+          description: item.description,
+          type: item.type,
+          status: item.status,
+          priority: item.priority,
+          reported_by: item.reportedBy
+        })
+        .then(({ error }) => {
+          if (error) console.error("Error saving feedback:", error);
+        });
+    }
+  }, [profile]);
 
   const updateFeedbackStatus = useCallback((id: string, status: FeedbackItem["status"]) => {
     setState((prev) => ({
       ...prev,
       feedback: prev.feedback.map((f) => (f.id === id ? { ...f, status } : f)),
     }));
-  }, []);
+    if (profile) {
+      supabase
+        .from('feedback')
+        .update({ status })
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) console.error("Error updating feedback status:", error);
+        });
+    }
+  }, [profile]);
 
   const toggleAutomation = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      automations: prev.automations.map((a) => 
-        a.id === id ? { ...a, status: a.status === "active" ? "inactive" : "active" } : a
-      ),
-    }));
-  }, []);
+    setState((prev) => {
+      const automation = prev.automations.find(a => a.id === id);
+      const newStatus = automation?.status === "active" ? "inactive" : "active";
+      
+      if (profile) {
+        supabase
+          .from('automations')
+          .update({ status: newStatus })
+          .eq('id', id)
+          .then(({ error }) => {
+            if (error) console.error("Error updating automation status:", error);
+          });
+      }
+
+      return {
+        ...prev,
+        automations: prev.automations.map((a) => 
+          a.id === id ? { ...a, status: newStatus } : a
+        ),
+      };
+    });
+  }, [profile]);
 
   return (
     <DashboardContext.Provider

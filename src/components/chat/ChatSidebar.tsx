@@ -25,7 +25,7 @@ interface Thread {
 
 const MODELS = [
   { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "Google" },
-  { id: "gemini-3-pro", name: "Gemini 3 Pro", provider: "Google" },
+  { id: "gemini-2.5-flash-pro", name: "Gemini 2.5 Pro", provider: "Google" },
   { id: "gpt-5", name: "GPT-5 (Preview)", provider: "OpenAI" },
   { id: "llama-3-70b", name: "Llama 3 70B", provider: "Meta" },
   { id: "gemma-2b", name: "Gemma 2B", provider: "Google" },

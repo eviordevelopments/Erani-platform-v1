@@ -8,6 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useTheme } from "@/context/ThemeContext";
+import { loginAction } from "./actions";
 
 export default function Login() {
   const router = useRouter();
@@ -23,14 +24,20 @@ export default function Login() {
     setError(null);
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Use the Server Action to bypass network blocks
+      const result = await loginAction(email, password);
 
-      if (authError) throw authError;
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      // Sync the session back to the browser client
+      if (result.session) {
+        const { error: sessionError } = await supabase.auth.setSession(result.session);
+        if (sessionError) console.warn("Aviso: No se pudo sincronizar la sesión localmente, pero el ingreso fue validado.");
+      }
       
-      const user = data.user;
+      const user = result.user;
       const onboarded = user?.user_metadata?.onboardingCompleted;
 
       if (onboarded) {
@@ -39,7 +46,12 @@ export default function Login() {
         router.push('/onboarding');
       }
     } catch (err: any) {
-      setError(err.message || "Error al iniciar sesión. Verifica tus credenciales.");
+      console.error("Login Error Details:", err);
+      if (err.message === "Failed to fetch") {
+        setError("Error de conexión: No se pudo contactar con Supabase. Verifica tu internet o desactiva tu VPN/Adblocker.");
+      } else {
+        setError(err.message || "Error al iniciar sesión. Verifica tus credenciales.");
+      }
     } finally {
       setIsLoading(false);
     }

@@ -31,6 +31,8 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useDashboard } from "@/context/DashboardContext";
 import { useRouter } from "next/navigation";
+import { auditLogger } from "@/lib/auditLogger";
+import RealtimeLogTerminal from "@/components/RealtimeLogTerminal";
 
 type SettingsTab = "organization" | "team" | "features" | "referrals" | "logs" | "account";
 
@@ -56,6 +58,12 @@ export default function SettingsPage() {
     logoUrl: ""
   });
 
+  // Account
+  const [accountData, setAccountData] = useState({
+    fullName: "",
+    email: ""
+  });
+
   // Team
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -65,7 +73,8 @@ export default function SettingsPage() {
     firewall_enabled: true,
     email_alerts: true,
     slack_alerts: false,
-    auto_audit: false
+    auto_audit: false,
+    streaming_logs_enabled: true
   });
 
   // Referrals
@@ -93,7 +102,12 @@ export default function SettingsPage() {
       annualRevenue: 0,
       goals: meta.goals || [],
       recoveryEmail: meta.recoveryEmail || "",
-      logoUrl: profile?.avatar_url || ""
+      logoUrl: profile?.avatar_url || meta.logoBase64 || ""
+    });
+
+    setAccountData({
+      fullName: meta.fullName || profile?.full_name || "",
+      email: user?.email || ""
     });
 
     if (!profile?.organization_id) return;
@@ -146,6 +160,20 @@ export default function SettingsPage() {
 
   const handleSaveOrg = async () => {
     setIsSaving(true);
+    
+    // Update metadata as well for global availability
+    const { error: metaError } = await supabase.auth.updateUser({
+      data: {
+        orgName: orgData.name,
+        bio: orgData.bio,
+        sector: orgData.sector,
+        teamSize: orgData.teamSize,
+        goals: orgData.goals,
+        recoveryEmail: orgData.recoveryEmail
+      }
+    });
+
+    // Update table if available
     const { error } = await supabase
       .from('organizations')
       .update({
@@ -159,8 +187,33 @@ export default function SettingsPage() {
       })
       .eq('id', profile?.organization_id);
     
-    if (error) setMessage({ type: "error", text: "Error al guardar organización" });
-    else setMessage({ type: "success", text: "Organización actualizada" });
+    if (metaError && error) {
+      setMessage({ type: "error", text: "Error al guardar configuración" });
+    } else {
+      setMessage({ type: "success", text: "Configuración actualizada" });
+      // LOG: Config Change
+      await auditLogger.log('CONFIG_CHANGE', 'Configuración de organización actualizada', { 
+        orgName: orgData.name,
+        sector: orgData.sector
+      }, 'settings');
+    }
+    setIsSaving(false);
+  };
+
+  const handleSaveAccount = async () => {
+    setIsSaving(true);
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        fullName: accountData.fullName
+      }
+    });
+
+    if (error) {
+      setMessage({ type: "error", text: "Error al actualizar perfil" });
+    } else {
+      setMessage({ type: "success", text: "Perfil actualizado correctamente" });
+      if (refreshProfile) await refreshProfile();
+    }
     setIsSaving(false);
   };
 
@@ -174,6 +227,12 @@ export default function SettingsPage() {
         organization_id: profile?.organization_id,
         [key]: newVal
       });
+
+    // LOG: Feature Toggle
+    await auditLogger.log('CONFIG_CHANGE', `Feature ${key} ${newVal ? 'activada' : 'desactivada'}`, {
+      feature: key,
+      value: newVal
+    }, 'zap');
   };
 
   const handleSendInvite = async () => {
@@ -450,6 +509,7 @@ export default function SettingsPage() {
                                 { key: "firewall_enabled", label: "Firewall Automático", desc: "Activa alertas cuando Scope Creep > 5%" },
                                 { key: "email_alerts", label: "Alertas por Email", desc: "Notificaciones de intrusos y estancamiento" },
                                 { key: "slack_alerts", label: "Alertas por Slack", desc: "Webhooks directos a tu canal operativo" },
+                                { key: "streaming_logs_enabled", label: "Logs en Tiempo Real", desc: "Transmisión SSE de actividad de plataforma" },
                               ].map((item) => (
                                 <div key={item.key} className="flex items-center justify-between">
                                    <div className="flex flex-col">
@@ -568,24 +628,24 @@ export default function SettingsPage() {
 
                 {/* 5. LOGS */}
                 {activeTab === "logs" && (
-                   <div className="flex flex-col gap-8">
+                   <div className="flex flex-col gap-8 h-[600px]">
                       <div className="flex justify-between items-center">
                          <h3 className="text-xl font-black text-foreground uppercase tracking-tight">Logs Operativos & Auditoría</h3>
-                         <span className="text-[9px] uppercase font-black text-gray-600 tracking-widest">Mostrando últimos {logs.length} eventos</span>
+                         <div className="flex items-center gap-4">
+                            <span className="text-[9px] uppercase font-black text-gray-600 tracking-widest flex items-center gap-2">
+                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Stream SSE Activo
+                            </span>
+                         </div>
                       </div>
-                      <div className="flex flex-col gap-2">
-                         {logs.map((log) => (
-                           <div key={log.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/[0.07] transition-all">
-                              <div className="flex items-center gap-5">
-                                 <div className={`w-2 h-2 rounded-full ${log.action.includes('error') ? 'bg-erani-coral' : 'bg-erani-blue'}`} />
-                                 <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-foreground uppercase tracking-widest">{log.action}</span>
-                                    <span className="text-[10px] text-gray-600 font-medium">{log.description}</span>
-                                 </div>
-                              </div>
-                              <span className="text-[10px] font-mono text-gray-700">{new Date(log.created_at).toLocaleString()}</span>
-                           </div>
-                         ))}
+                      
+                      <div className="flex-1 min-h-0 rounded-[2rem] overflow-hidden border border-white/5">
+                        {profile?.organization_id ? (
+                          <RealtimeLogTerminal organizationId={profile.organization_id} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-white/5">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-gray-600">Cargando Terminal...</span>
+                          </div>
+                        )}
                       </div>
                    </div>
                 )}
@@ -596,18 +656,30 @@ export default function SettingsPage() {
                      <div className="flex flex-col gap-6">
                         <h3 className="text-xl font-black text-foreground uppercase tracking-tight">Seguridad de la Cuenta</h3>
                         <div className="flex flex-col gap-4">
-                           <div className="flex flex-col gap-2">
-                              <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Propietario</label>
-                              <div className="p-4 rounded-xl bg-foreground/5 border border-glass-border text-sm font-bold text-foreground flex items-center gap-3">
-                                 <User className="w-4 h-4 text-erani-blue" /> {profile?.full_name}
-                              </div>
-                           </div>
-                           <div className="flex flex-col gap-2">
-                              <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Email Principal</label>
-                              <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-sm font-bold text-gray-500 flex items-center gap-3">
-                                 <Mail className="w-4 h-4" /> {user?.email}
-                              </div>
-                           </div>
+                            <div className="flex flex-col gap-2">
+                               <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Nombre Completo</label>
+                               <input 
+                                 type="text"
+                                 value={accountData.fullName}
+                                 onChange={(e) => setAccountData({ ...accountData, fullName: e.target.value })}
+                                 className="w-full bg-foreground/5 border border-glass-border p-4 rounded-xl text-sm font-bold text-foreground focus:border-erani-blue focus:outline-none transition-all"
+                                 placeholder="Tu nombre"
+                               />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                               <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Email Principal</label>
+                               <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-sm font-bold text-gray-500 flex items-center gap-3">
+                                  <Mail className="w-4 h-4" /> {user?.email}
+                               </div>
+                            </div>
+                            <button 
+                              onClick={handleSaveAccount}
+                              disabled={isSaving}
+                              className="mt-4 bg-foreground text-background px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all self-start flex items-center gap-2"
+                            >
+                              {isSaving ? "Guardando..." : "Guardar Cambios"}
+                              <Send className="w-3 h-3" />
+                            </button>
                         </div>
                      </div>
                      

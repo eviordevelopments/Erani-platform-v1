@@ -12,14 +12,14 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    // Lazy initializer — runs only on the client, avoids setState-in-effect
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("erani-theme") as Theme | null;
-      if (stored === "dark" || stored === "light") return stored;
+  const [theme, setTheme] = useState<Theme>("dark");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("erani-theme") as Theme | null;
+    if (stored === "dark" || stored === "light") {
+      setTheme(stored);
     }
-    return "dark";
-  });
+  }, []);
 
   useEffect(() => {
     // Update HTML class and localStorage

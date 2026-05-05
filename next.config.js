@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // output: 'standalone',
 
   // Prevent webpack from bundling native Node modules that use pdfjs-dist internally.
   // These must run as true Node.js CJS modules, NOT in the RSC webpack sandbox.
@@ -33,6 +33,15 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
+      },
+    ];
+  },
+
+  async rewrites() {
+    return [
+      {
+        source: '/api/supabase/:path*',
+        destination: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/:path*`,
       },
     ];
   },

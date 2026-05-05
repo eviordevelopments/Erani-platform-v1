@@ -16,6 +16,16 @@ export default function DashboardPage() {
 
   // Dashboard state can be "live" or "demo"
   const isLive = !!insights;
+
+  // Auto-migration for stale Gemini models in local storage if used by other components
+  useState(() => {
+    if (typeof window !== "undefined") {
+      const savedModel = localStorage.getItem("erani_forensic_model");
+      if (savedModel && savedModel.includes("2.0")) {
+        localStorage.setItem("erani_forensic_model", "gemini-2.5-flash");
+      }
+    }
+  });
   
   // Mapping of card keys to components
   const cards = useMemo(() => ({
@@ -106,7 +116,7 @@ export default function DashboardPage() {
     )
   }), [insights, isLive]);
 
-  const userName = profile?.full_name || user?.user_metadata?.fullName || "Usuario";
+  const userName = (profile?.full_name || user?.user_metadata?.fullName || "Usuario").split(' ')[0];
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
@@ -122,15 +132,15 @@ export default function DashboardPage() {
                animate={{ opacity: 1, x: 0 }}
                className="flex flex-col gap-1"
             >
-               <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-3">
-                  <span className="text-2xl font-bold uppercase tracking-widest text-nav-text">
-                     Bienvenido a ERANI,{" "}
-                     <span 
-                       className="relative inline-block text-xl text-transparent bg-clip-text bg-gradient-to-r from-erani-blue via-erani-purple to-erani-coral animate-gradient-x drop-shadow-[0_0_12px_rgba(158,128,255,0.8)]"
-                       style={{ backgroundSize: '200% auto' }}
-                     >
-                        {userName}
-                     </span>
+               <div className="flex flex-col md:flex-row md:items-baseline gap-2">
+                  <span className="text-xl md:text-2xl font-bold uppercase tracking-widest text-nav-text whitespace-nowrap">
+                     Bienvenido a ERANI,
+                  </span>
+                  <span 
+                    className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-erani-blue via-erani-purple to-erani-coral animate-gradient-x drop-shadow-[0_0_12px_rgba(158,128,255,0.8)] uppercase tracking-widest"
+                    style={{ backgroundSize: '200% auto' }}
+                  >
+                     {userName}
                   </span>
                </div>
             </motion.div>
@@ -162,21 +172,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {!isLive && !profile?.onboardingCompleted && (
-             <motion.div 
-               initial={{ opacity: 0, y: -20 }}
-               animate={{ opacity: 1, y: 0 }}
-               className="p-4 rounded-2xl bg-erani-purple/10 border border-erani-purple/20 flex items-center gap-4"
-             >
-                <div className="w-10 h-10 rounded-xl bg-erani-purple/20 flex items-center justify-center text-erani-purple">
-                  <AlertCircle className="w-5 h-5" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-black text-foreground uppercase tracking-widest">Modo de Demostración</span>
-                  <span className="text-[10px] text-nav-text font-medium">Sube archivos en el Protocolo de Auditoría para ver tus métricas reales aquí.</span>
-                </div>
-             </motion.div>
-          )}
+          {/* Banner removed for registered users */}
 
           {/* DRAGGABLE BENTO GRID */}
           <Reorder.Group 

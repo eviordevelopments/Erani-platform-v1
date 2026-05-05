@@ -116,10 +116,44 @@ export default function Onboarding() {
     setIsSaving(true);
     
     try {
-      // Save metadata to Auth User (excluding the massive base64 string to avoid JWT bloat)
+      // 1. Create Organization record in database
+      const { data: orgData, error: orgError } = await supabase
+        .from('organizations')
+        .insert({
+          name: formData.orgName,
+          slug: formData.orgName.toLowerCase().replace(/\s+/g, '-') + '-' + Math.random().toString(36).substring(2, 7),
+          trl_level: 1,
+          plan: 'trial'
+        })
+        .select()
+        .single();
+
+      if (orgError) {
+        console.error("Error creating organization", orgError);
+        throw new Error("No se pudo crear la organización en la base de datos: " + orgError.message);
+      }
+
+      // 2. Create Profile record linked to organization
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          organization_id: orgData.id,
+          full_name: formData.fullName,
+          email: user.email,
+          role: 'client'
+        });
+
+      if (profileError) {
+        console.error("Error creating/updating profile", profileError);
+        throw new Error("No se pudo vincular tu perfil a la organización: " + profileError.message);
+      }
+
+      // 3. Save metadata to Auth User
       const { error: authError } = await supabase.auth.updateUser({
         data: {
           onboardingCompleted: true,
+          organization_id: orgData.id,
           eris_balance: 100,
           fullName: formData.fullName,
           orgName: formData.orgName,
@@ -129,22 +163,16 @@ export default function Onboarding() {
           goals: formData.goals,
           recoveryEmail: formData.recoveryEmail,
           checkedFiles,
-          teamEmails
+          teamEmails,
+          logoBase64: formData.logoBase64
         }
       });
 
       if (authError) throw authError;
 
-      // Update public profile with the logo Base64
-      const { error: profileError } = await supabase.from('profiles').update({
-        full_name: formData.fullName,
-        organization_id: formData.orgName, // Simple mapping for now
-        avatar_url: formData.logoBase64 // Store base64 here instead of user_metadata
-      }).eq('id', user.id);
-
-      if (profileError) throw profileError;
-
-      await refreshProfile();
+      // Refresh session and profile to ensure Context is updated
+      await supabase.auth.refreshSession();
+      if (refreshProfile) await refreshProfile();
 
       setStep("success");
       confetti({

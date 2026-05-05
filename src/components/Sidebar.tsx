@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   LayoutDashboard,
@@ -35,6 +35,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard Forense", href: "/dashboard" },
   { icon: FileSearch, label: "Protocolo de Auditoría", href: "/audit" },
   { icon: ShieldCheck, label: "Peritaje Forense", href: "/forensic" },
+  { icon: LogsIcon, label: "Historial Forense", href: "/reports" },
   { icon: CalendarCheck2, label: "Sesiones de Estrategia", href: "/sessions" },
   { icon: ShoppingBag, label: "Automatizaciones", href: "/marketplace" },
   { icon: PlusCircle, label: "ERANI Services+", href: "/services" },
@@ -51,6 +52,11 @@ export default function Sidebar() {
   const { theme, toggleTheme } = useTheme();
   const { user, profile, signOut } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const sidebarWidth = isCollapsed ? 88 : 280;
 
@@ -61,7 +67,8 @@ export default function Sidebar() {
 
   const userMeta = user?.user_metadata || {};
   const logoSrc = profile?.avatar_url || userMeta.logoBase64 || "/isologo.png";
-  const erisBalance = userMeta.eris_balance || 0;
+  const erisBalance = userMeta.eris_balance !== undefined ? userMeta.eris_balance : 100;
+  const erisPercentage = Math.min(100, Math.max(0, (erisBalance / 100) * 100));
   const fullName = profile?.full_name || userMeta.fullName || "Usuario";
   const orgName = userMeta.orgName || profile?.role || "Cliente";
 
@@ -156,7 +163,7 @@ export default function Sidebar() {
         </nav>
 
         {/* ERIS Credits Card */}
-        <div className={`mt-4 ${isCollapsed ? "px-0" : "px-2"}`}>
+        <div className={`-mt-4 relative z-10 ${isCollapsed ? "px-0" : "px-2"}`}>
           {!isCollapsed ? (
               <div className="p-5 rounded-[2rem] bg-gradient-to-br from-erani-blue/10 via-foreground/5 to-erani-purple/10 border border-glass-border relative overflow-hidden group/credits shadow-xl">
                   <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-10">
@@ -182,7 +189,7 @@ export default function Sidebar() {
                   <div className="relative h-1.5 w-full bg-foreground/5 rounded-full overflow-hidden border border-glass-border">
                     <motion.div 
                       initial={{ width: 0 }}
-                      animate={{ width: "75%" }}
+                      animate={{ width: `${erisPercentage}%` }}
                       transition={{ duration: 1.5, ease: "easeOut" }}
                       className="absolute top-0 left-0 h-full bg-gradient-to-r from-erani-blue to-erani-purple"
                     />
@@ -277,7 +284,11 @@ export default function Sidebar() {
              } text-nav-text hover:text-erani-blue`}
              title="Toggle Theme"
           >
-            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {mounted ? (
+              theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />
+            ) : (
+              <div className="w-4 h-4" /> // Placeholder to avoid mismatch
+            )}
             {!isCollapsed && <span className="text-[8px] uppercase font-black tracking-widest">Cambiar Tema</span>}
           </button>
         </div>

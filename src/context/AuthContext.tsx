@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { User } from "@supabase/supabase-js";
+import { auditLogger } from "@/lib/auditLogger";
 
 export interface Profile {
   id: string;
@@ -19,6 +20,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  updateErisBalance: (newBalance: number) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -27,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: async () => {},
   refreshProfile: async () => {},
+  updateErisBalance: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -34,15 +37,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    
-    if (!error && data) {
-      setProfile(data as Profile);
+  const fetchProfile = async (userId: string, retries = 3) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (!error && data) {
+        setProfile(data as Profile);
+      } else if (error && retries > 0) {
+        console.warn(`Retrying profile fetch... (${retries} left)`, error.message);
+        await new Promise(r => setTimeout(r, 1000));
+        return fetchProfile(userId, retries - 1);
+      }
+    } catch (err) {
+      if (retries > 0) {
+        await new Promise(r => setTimeout(r, 1000));
+        return fetchProfile(userId, retries - 1);
+      }
+      console.error("Profile fetch failed after retries:", err);
     }
   };
 
@@ -50,13 +65,45 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (user) await fetchProfile(user.id);
   };
 
+  const updateErisBalance = async (newBalance: number) => {
+    if (!user) return;
+    try {
+      const { data: { user: updatedUser }, error } = await supabase.auth.updateUser({
+        data: { eris_balance: newBalance }
+      });
+      
+      if (error) throw error;
+      
+      if (updatedUser) {
+        setUser(updatedUser);
+      }
+    } catch (error: any) {
+      console.error("Failed to update ERIS balance:", error.message);
+      if (error.message === 'Failed to fetch') {
+        alert("Error de conexión: No se pudo sincronizar el balance de ERIS. Por favor verifica tu conexión a internet o el estado de Supabase.");
+      }
+    }
+  };
+
   useEffect(() => {
     // Check initial session
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
+      const currentUser = session?.user ?? null;
+      
+      if (currentUser) {
+        // Initialize ERIS balance if it doesn't exist
+        if (currentUser.user_metadata?.eris_balance === undefined) {
+          const { data: { user: updatedUser } } = await supabase.auth.updateUser({
+            data: { eris_balance: 100 }
+          });
+          setUser(updatedUser ?? currentUser);
+        } else {
+          setUser(currentUser);
+        }
+        await fetchProfile(currentUser.id);
+      } else {
+        setUser(null);
       }
       setLoading(false);
     };
@@ -64,10 +111,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     checkSession();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         await fetchProfile(session.user.id);
+        if (event === 'SIGNED_IN') {
+          await auditLogger.log('LOGIN', 'Sesión iniciada correctamente', {}, 'log-in');
+        }
       } else {
         setProfile(null);
       }
@@ -78,12 +128,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async () => {
+    await auditLogger.log('LOGOUT', 'Sesión cerrada por el usuario', {}, 'log-out');
     await supabase.auth.signOut();
     setProfile(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile, updateErisBalance }}>
       {children}
     </AuthContext.Provider>
   );

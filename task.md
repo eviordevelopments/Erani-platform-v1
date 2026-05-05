@@ -1,6 +1,10 @@
-- [x] **Configuración del Motor IA:** Migrar la selección de modelo y temperatura al flujo de creación de proyectos.
-- [x] **UI de Consumo:** Implementar la visualización del consumo de ERIs en la UI durante el proceso de análisis (animación de progreso de tokens/créditos).
-- [x] **Integración Real:** Conectar los parámetros `aiModel` y `aiTemperature` guardados en el proyecto con la llamada real al endpoint de API en `src/app/api/forensic/route.ts`.
-- [x] **Visibilidad en Hover:** Corregir el color del enlace "SOLICITAR AUDITORÍA FORENSE" en modo claro para que sea legible (negro) al hacer hover.
+- [x] **Generación de Reportes PDF:** Implementar motor vectorial con `@react-pdf/renderer`.
+    - [x] Crear documento `ForensicPDFDocument.tsx` con 5 slides de diseño corporativo.
+    - [x] Implementar `PDFDownloadWrapper.tsx` para manejo de ESM en Next.js.
+    - [x] Integrar con `ReportDownloader.tsx` y la página forense.
 - [ ] **Verificación DNS:** Validar la disponibilidad del dominio `platform.erani.mx` tras la propagación de los cambios en el despliegue.
-- [ ] **Dashboard de Consumo:** Crear un componente de progreso que consuma el estado global de ERIs y lo actualice en tiempo real tras finalizar el análisis.
+- [x] Stabilize Dashboard UI (Name size matching)
+- [x] Implement Model Name Auto-Migration (2.0 to 2.5)
+- [x] Enhance Forensic API Error Logging & Validation
+- [x] Improve AuthContext Network Resilience
+- [x] Final Verification and Cleanup.

@@ -1,0 +1,85 @@
+{
+  "report_metadata": {
+    "project_name": "PRJ-SD2QQTG6H",
+    "audit_date": "2024-07-30",
+    "auditor_id": "ERANI-AFO-001",
+    "model_used": "ERANI-ProfitabilityFirewall-v2.0",
+    "version": "2.0"
+  },
+  "slide_1_impacto_directo": {
+    "fuga_confirmada_mxn": 9000,
+    "riesgo_latente_mensual_mxn": 0,
+    "desviacion_scope_creep_pct": 15,
+    "punto_conciencia_rentabilidad_mxn": 9000,
+    "coi_anual_mxn": 108000
+  },
+  "slide_2_analisis_forense": {
+    "top_5_tickets": [
+      {
+        "ticket_id": "86dyjd5wr",
+        "descripcion": "TC-003 - Límite de selección múltiple",
+        "filtro": "Backend",
+        "hrs_calc": 8,
+        "costo_invisible_mxn": 3600
+      },
+      {
+        "ticket_id": "86dyjd5wd",
+        "descripcion": "TC-002 - Criterio de explicación (L2/P4)",
+        "filtro": "Backend",
+        "hrs_calc": 6,
+        "costo_invisible_mxn": 2700
+      },
+      {
+        "ticket_id": "86dyjd5v0",
+        "descripcion": "TC-001 - Criterio de formato explícito (L2/P1)",
+        "filtro": "Backend",
+        "hrs_calc": 6,
+        "costo_invisible_mxn": 2700
+      },
+      {
+        "ticket_id": "INF-001",
+        "descripcion": "Optimización de consultas de base de datos (Inferencia)",
+        "filtro": "Inferencia",
+        "hrs_calc": 5,
+        "costo_invisible_mxn": 2250
+      },
+      {
+        "ticket_id": "INF-002",
+        "descripcion": "Refactorización de componente de UI (Inferencia)",
+        "filtro": "Inferencia",
+        "hrs_calc": 3,
+        "costo_invisible_mxn": 1350
+      }
+    ],
+    "resumen_consolidacion": {
+      "fuga_externa_mxn": 0,
+      "fuga_interna_mxn": 9000,
+      "total_conciliado_monto_mxn": 9000,
+      "estado_inventario_desc": "Análisis de 3 tickets completos con inferencia de costo para baselines.",
+      "otros_tickets_cantidad": 0,
+      "otros_tickets_monto_mxn": 0
+    }
+  },
+  "slide_3_kpis_salud": {
+    "monitor_bucle_pct": 20,
+    "indice_friccion_pct": 100,
+    "dark_data_index_pct": 100,
+    "intensidad_scope_creep_pct": 15,
+    "analisis_ceguera_operativa": "La falta de criterios claros, la ambigüedad en los requisitos y la alta latencia en la resolución de tareas evidencian una ceguera operativa significativa en la gestión de proyectos y tiempos de entrega."
+  },
+  "slide_4_estrategia_firewall": {
+    "protocolos_bloqueo": "Implementar criterios de aceptación claros y cuantificables en la fase de planeación. Establecer y hacer cumplir Service Level Agreements (SLAs) para la resolución de tickets de backend y UI. Promover la documentación exhaustiva de los criterios de evaluación y expectativas. Capacitar al equipo en estimación de tiempo y asegurar el registro sistemático de logs de actividad.",
+    "roi_dias": 90,
+    "proyeccion_margen_pct": 5
+  },
+  "slide_5_anexo_sustento": {
+    "frameworks": [
+      "SODA Methodology",
+      "Agile Cost Management",
+      "David Baker's Profitability Framework",
+      "Activity-Based Costing",
+      "Theory of Constraints"
+    ],
+    "glosario": [
+      "Hemorragia Invisible",
+      "Costo Invisible

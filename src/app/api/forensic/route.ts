@@ -11,18 +11,30 @@
  */
 
 import { NextResponse }    from "next/server";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { createClient }    from "@supabase/supabase-js";
 import { SYSTEM_PROMPT_FORENSIC } from "@/lib/gemini";
 import {
   extractTextFromFile,
   processFileForRAG,
   generateQueryEmbedding,
+  chunkText,
+  embedChunks,
   EmbeddedChunk,
 } from "@/lib/rag";
 
+// ── Types ──────────────────────────────────────────────────────────────────
+export type AuditStage = 
+  | "METADATA_PARSING"
+  | "RAG_RETRIEVAL"
+  | "MODEL_INIT"
+  | "GEMINI_INFERENCE"
+  | "REPORT_PERSISTENCE"
+  | "COMPLETED"
+  | "ERROR";
+
 // ── Server-side Clients ───────────────────────────────────────────────────
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,25 +43,27 @@ const supabase = createClient(
 
 // ── Gemini Response Schema ─────────────────────────────────────────────────
 const responseSchema = {
-  type: Type.OBJECT,
+  type: SchemaType.OBJECT,
   properties: {
     report_metadata: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        project_name: { type: Type.STRING, description: "Nombre extraído del CSV" },
-        audit_id:     { type: Type.STRING, description: "Folio generado para la auditoría" },
-        currency:     { type: Type.STRING, description: "Moneda de reporte (ej. MXN)" },
+        project_name: { type: SchemaType.STRING },
+        audit_date:   { type: SchemaType.STRING },
+        auditor_id:   { type: SchemaType.STRING },
+        version:      { type: SchemaType.STRING },
+        model_used:   { type: SchemaType.STRING },
       },
-      required: ["project_name", "audit_id", "currency"],
+      required: ["project_name", "audit_date"],
     },
     slide_1_impacto_directo: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        fuga_confirmada_mxn:             { type: Type.NUMBER },
-        riesgo_latente_mensual_mxn:      { type: Type.NUMBER },
-        desviacion_scope_creep_pct:      { type: Type.NUMBER },
-        punto_conciencia_rentabilidad_mxn: { type: Type.NUMBER },
-        coi_anual_mxn:                   { type: Type.NUMBER },
+        fuga_confirmada_mxn:             { type: SchemaType.NUMBER },
+        riesgo_latente_mensual_mxn:      { type: SchemaType.NUMBER },
+        desviacion_scope_creep_pct:      { type: SchemaType.NUMBER },
+        punto_conciencia_rentabilidad_mxn: { type: SchemaType.NUMBER },
+        coi_anual_mxn:                   { type: SchemaType.NUMBER },
       },
       required: [
         "fuga_confirmada_mxn",
@@ -60,35 +74,34 @@ const responseSchema = {
       ],
     },
     slide_2_analisis_forense: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
         top_5_tickets: {
-          type: Type.ARRAY,
+          type: SchemaType.ARRAY,
+          description: "Lista de los EXACTAMENTE 5 tickets con mayor costo invisible detectado. NO REPETIR.",
           items: {
-            type: Type.OBJECT,
+            type: SchemaType.OBJECT,
             properties: {
-              ticket_id:          { type: Type.STRING },
-              descripcion:        { type: Type.STRING },
-              filtro:             { type: Type.STRING, enum: ["[INT]", "[EXT]"] },
-              hrs_calc:           { type: Type.NUMBER },
-              costo_invisible_mxn: { type: Type.NUMBER },
+              ticket_id:          { type: SchemaType.STRING },
+              descripcion:        { type: SchemaType.STRING },
+              filtro:             { type: SchemaType.STRING },
+              hrs_calc:           { type: SchemaType.NUMBER },
+              costo_invisible_mxn: { type: SchemaType.NUMBER },
             },
             required: ["ticket_id", "descripcion", "filtro", "hrs_calc", "costo_invisible_mxn"],
           },
         },
         resumen_consolidacion: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
-            otros_tickets_cantidad:    { type: Type.INTEGER },
-            otros_tickets_monto_mxn:   { type: Type.NUMBER },
-            fuga_externa_mxn:          { type: Type.NUMBER },
-            fuga_interna_mxn:          { type: Type.NUMBER },
-            total_conciliado_monto_mxn: { type: Type.NUMBER },
-            estado_inventario_desc:    { type: Type.STRING },
+            otros_tickets_cantidad:    { type: SchemaType.NUMBER },
+            otros_tickets_monto_mxn:   { type: SchemaType.NUMBER },
+            fuga_externa_mxn:          { type: SchemaType.NUMBER },
+            fuga_interna_mxn:          { type: SchemaType.NUMBER },
+            total_conciliado_monto_mxn: { type: SchemaType.NUMBER },
+            estado_inventario_desc:    { type: SchemaType.STRING },
           },
           required: [
-            "otros_tickets_cantidad",
-            "otros_tickets_monto_mxn",
             "fuga_externa_mxn",
             "fuga_interna_mxn",
             "total_conciliado_monto_mxn",
@@ -99,13 +112,13 @@ const responseSchema = {
       required: ["top_5_tickets", "resumen_consolidacion"],
     },
     slide_3_kpis_salud: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        monitor_bucle_pct:          { type: Type.NUMBER },
-        indice_friccion_pct:        { type: Type.NUMBER },
-        dark_data_index_pct:        { type: Type.NUMBER },
-        intensidad_scope_creep_pct: { type: Type.NUMBER },
-        analisis_ceguera_operativa: { type: Type.STRING },
+        monitor_bucle_pct:          { type: SchemaType.NUMBER },
+        indice_friccion_pct:        { type: SchemaType.NUMBER },
+        dark_data_index_pct:        { type: SchemaType.NUMBER },
+        intensidad_scope_creep_pct: { type: SchemaType.NUMBER },
+        analisis_ceguera_operativa: { type: SchemaType.STRING },
       },
       required: [
         "monitor_bucle_pct",
@@ -116,29 +129,39 @@ const responseSchema = {
       ],
     },
     slide_4_estrategia_firewall: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        protocolos_bloqueo:    { type: Type.STRING },
-        roi_dias:              { type: Type.INTEGER },
-        proyeccion_margen_pct: { type: Type.NUMBER },
+        protocolos_bloqueo:    { type: SchemaType.STRING },
+        roi_dias:              { type: SchemaType.NUMBER },
+        proyeccion_margen_pct: { type: SchemaType.NUMBER },
       },
       required: ["protocolos_bloqueo", "roi_dias", "proyeccion_margen_pct"],
     },
     slide_5_anexo_sustento: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        frameworks: { type: Type.ARRAY, items: { type: Type.STRING } },
-        glosario:   { type: Type.ARRAY, items: { type: Type.STRING } },
+        frameworks: { 
+          type: SchemaType.ARRAY, 
+          description: "Lista de 3-5 frameworks (David Baker, SODA, etc.)",
+          items: { type: SchemaType.STRING } 
+        },
+        glosario:   { 
+          type: SchemaType.ARRAY, 
+          description: "Glosario de 3-5 términos clave.",
+          items: { type: SchemaType.STRING } 
+        },
       },
       required: ["frameworks", "glosario"],
     },
     anexo_tecnico: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        metodologia_inferencia: { type: Type.STRING },
-        vectores_auditados:     { type: Type.ARRAY, items: { type: Type.STRING } },
-        frameworks_utilizados:  { type: Type.ARRAY, items: { type: Type.STRING } },
-        glosario_terminos:      { type: Type.ARRAY, items: { type: Type.STRING } },
+        metodologia_inferencia: { type: SchemaType.STRING },
+        vectores_auditados:     { 
+          type: SchemaType.ARRAY, 
+          description: "Lista de máximo 5 vectores clave analizados. NO REPETIR.",
+          items: { type: SchemaType.STRING } 
+        },
       },
       required: ["metodologia_inferencia", "vectores_auditados"],
     },
@@ -158,225 +181,338 @@ const responseSchema = {
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") ?? "";
+    const { searchParams } = new URL(request.url);
+    let action = searchParams.get("action");
 
-    // ── 1. Parse Incoming Request ─────────────────────────────────────────
+    // ── 1. Common Metadata ────────────────────────────────────────────────
     let organizationId   = "org_erani_default";
     let projectId        = "project_default";
-    let allowStorage     = false;
+    let allowStorage     = true;
     let historicalContext = false;
-    let aiModel          = "gemini-2.5-flash";
+    let aiModel          = "gemini-2.5-flash"; 
     let aiTemperature    = 0.4;
-    const fileBuffers: { buffer: Buffer; name: string }[] = [];
+    let isTemporal       = false;
+    let combinedText      = "";
+
+    // Parse Body/FormData only once
+    let formData: FormData | null = null;
+    let bodyJson: any = null;
 
     if (contentType.includes("multipart/form-data")) {
-      // Multipart: files + config from the Audit Protocol page
-      const formData = await request.formData();
+      formData = await request.formData();
+      action = action || (formData.get("action") as string);
+    } else if (contentType.includes("application/json")) {
+      bodyJson = await request.json().catch(() => ({}));
+      action = action || bodyJson.action;
+    }
 
-      organizationId    = (formData.get("organizationId")    as string) || organizationId;
-      projectId         = (formData.get("projectId")         as string) || projectId;
-      allowStorage      = formData.get("allowStorage")      === "true";
-      historicalContext = formData.get("historicalContext") === "true";
-      aiModel           = (formData.get("aiModel")           as string) || aiModel;
-      aiTemperature     = parseFloat((formData.get("aiTemperature") as string) || "0.4");
+    action = action || "analyze"; // Default fallback
 
-      // Collect all uploaded files
-      for (const [key, value] of formData.entries()) {
-        if (value instanceof File) {
-          const arrayBuffer = await value.arrayBuffer();
-          fileBuffers.push({
-            buffer: Buffer.from(arrayBuffer),
-            name: value.name,
+    console.log(`[Forensic API] Action: ${action}, Content-Type: ${contentType}`);
+
+    // Utility for retrying Supabase operations
+    const retrySupabase = async (fn: () => Promise<any>, retries = 3, delay = 1000) => {
+      let lastError = null;
+      for (let i = 0; i < retries; i++) {
+        try {
+          const result = await fn();
+          if (!result.error) return result;
+          lastError = result.error;
+          console.warn(`[SUPABASE_RETRY] Attempt ${i + 1} failed: ${lastError.message}`);
+        } catch (e: any) {
+          lastError = e;
+          console.warn(`[SUPABASE_RETRY] Exception on attempt ${i + 1}: ${e.message}`);
+        }
+        await new Promise(r => setTimeout(r, delay * (i + 1)));
+      }
+      return { data: null, error: lastError };
+    };
+
+    // ── 2. Handle Action: INGEST ──────────────────────────────────────────
+    if (action === "ingest") {
+      if (!formData) {
+        return NextResponse.json({ success: false, error: "Content-Type must be multipart/form-data for ingestion" }, { status: 400 });
+      }
+
+      organizationId = (formData.get("organizationId") as string) || organizationId;
+      projectId      = (formData.get("projectId")      as string) || projectId;
+      
+      const files = formData.getAll("files");
+      const results: { fileName: string; status: "success" | "error"; error?: string }[] = [];
+
+      console.log(`[INGEST] Starting processing for ${files.length} files...`);
+
+      for (const file of files) {
+        if (!(file instanceof File)) continue;
+        
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          
+          console.log(`[INGEST] Step 1: Extracting text from ${file.name} (${file.size} bytes)`);
+          const parsed = await extractTextFromFile(buffer, file.name);
+          
+          console.log(`[INGEST] Step 2: Chunking text...`);
+          const chunks = await chunkText(parsed);
+          console.log(`[INGEST] Found ${chunks.length} chunks.`);
+
+          if (chunks.length > 0) {
+            console.log(`[INGEST] Step 3: Generating embeddings with Gemini...`);
+            const embedded = await embedChunks(chunks);
+            
+            console.log(`[INGEST] Step 4: Inserting into Supabase table 'document_embeddings'...`);
+            const rows = embedded.map((chunk) => ({
+              organization_id: organizationId,
+              project_id:      projectId,
+              file_name:       chunk.fileName,
+              chunk_index:     chunk.chunkIndex,
+              content:         chunk.content,
+              embedding:       chunk.embedding,
+              metadata: {
+                file_type:  chunk.fileType,
+                size:       file.size,
+                created_at: new Date().toISOString(),
+              },
+            }));
+
+            const { data: insertedRows, error: dbError } = await retrySupabase(async () => 
+              await supabase.from("document_embeddings").insert(rows).select()
+            );
+
+            if (dbError) {
+              console.error(`[INGEST] Supabase Error for ${file.name}:`, dbError);
+              throw new Error(`Error en base de datos: ${dbError.message}. ¿Ejecutaste el script SQL?`);
+            }
+            console.log(`[INGEST] Successfully stored ${rows.length} rows for ${file.name}`);
+          } else {
+            throw new Error("El archivo está vacío o no contiene texto legible.");
+          }
+          
+          results.push({ fileName: file.name, status: "success" });
+        } catch (e: any) {
+          console.error(`[INGEST] Critical error for ${file.name}:`, e.message);
+          results.push({ 
+            fileName: file.name, 
+            status: "error", 
+            error: e.message 
           });
         }
       }
-    } else {
-      // Fallback: JSON body (legacy / testing)
-      const body = await request.json();
-      organizationId    = body.organizationId    ?? organizationId;
-      projectId         = body.projectId         ?? projectId;
-      allowStorage      = body.allowStorage      ?? false;
-      historicalContext = body.historicalContext ?? false;
-      aiModel           = body.aiModel           ?? aiModel;
-      aiTemperature     = body.aiTemperature     ?? aiTemperature;
 
-      // If rawData is passed as text, wrap it for processing
-      if (body.rawData) {
-        const rawText = typeof body.rawData === "string"
-          ? body.rawData
-          : JSON.stringify(body.rawData, null, 2);
-        fileBuffers.push({
-          buffer: Buffer.from(rawText, "utf-8"),
-          name: "rawdata.json",
-        });
-      }
+      const allSuccess = results.every(r => r.status === "success");
+      return NextResponse.json({ 
+        success: allSuccess, 
+        results,
+        message: allSuccess ? "Ingesta completada" : "Error en el procesamiento"
+      }, { status: allSuccess ? 200 : 400 });
     }
 
-    if (fileBuffers.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "No files or data provided" },
-        { status: 400 }
-      );
-    }
+    // ── 3. Handle Action: ANALYZE ─────────────────────────────────────────
+    if (action === "analyze") {
+      let currentStage: AuditStage = "METADATA_PARSING";
+      console.log(`[Forensic API] Starting ANALYSIS flow...`);
 
-    // ── 2. Extract Text From All Files ────────────────────────────────────
-    const extractedTexts: string[] = [];
-
-    for (const { buffer, name } of fileBuffers) {
       try {
-        const parsed = await extractTextFromFile(buffer, name);
-        if (parsed.text.trim()) {
-          extractedTexts.push(`[Archivo: ${name}]\n${parsed.text}`);
+        if (bodyJson) {
+          organizationId    = bodyJson.organizationId    ?? organizationId;
+          projectId         = bodyJson.projectId         ?? projectId;
+          allowStorage      = bodyJson.allowStorage      ?? true;
+          historicalContext = bodyJson.historicalContext ?? false;
+          aiModel           = bodyJson.aiModel           ?? "gemini-2.5-flash";
+          aiTemperature     = bodyJson.aiTemperature     ?? 0.4;
+          isTemporal        = bodyJson.isTemporal        ?? false;
+          combinedText      = bodyJson.rawData           ?? "";
+        } else if (formData) {
+          organizationId    = (formData.get("organizationId")    as string) || organizationId;
+          projectId         = (formData.get("projectId")         as string) || projectId;
+          allowStorage      = formData.get("allowStorage")      === "true";
+          historicalContext = formData.get("historicalContext") === "true";
+          aiModel           = (formData.get("aiModel")           as string) || "gemini-2.5-flash";
+          aiTemperature     = parseFloat((formData.get("aiTemperature") as string) || "0.4");
+          isTemporal        = formData.get("isTemporal")       === "true";
+          combinedText      = (formData.get("rawData")          as string) || "";
         }
-      } catch (e) {
-        console.warn(`No se pudo parsear ${name}:`, e);
-      }
-    }
 
-    const combinedText = extractedTexts.join("\n\n---\n\n");
+        console.log(`[ANALYSIS] Params: Model=${aiModel}, Temp=${aiTemperature}, Storage=${allowStorage}, Historical=${historicalContext}`);
 
-    // ── 3. RAG Path: Vectorize + Store (if allowStorage=true) ─────────────
-    let historicalContext_text = "";
+        // --- STAGE 1: RAG RETRIEVAL ---
+        currentStage = "RAG_RETRIEVAL";
+        console.log(`[STAGE: ${currentStage}] Fetching context for project: ${projectId}`);
+        let historicalContext_text = "";
+        
+        if (allowStorage) {
+          const { data: chunks, error: fetchError } = await supabase
+            .from("document_embeddings")
+            .select("content, file_name")
+            .eq("project_id", projectId);
 
-    if (allowStorage) {
-      // 3a. Vectorize all files and store in Supabase
-      const allEmbeddedChunks: EmbeddedChunk[] = [];
-
-      for (const { buffer, name } of fileBuffers) {
-        try {
-          const chunks = await processFileForRAG(buffer, name);
-          allEmbeddedChunks.push(...chunks);
-        } catch (e) {
-          console.warn(`Error vectorizando ${name}:`, e);
-        }
-      }
-
-      if (allEmbeddedChunks.length > 0) {
-        const rows = allEmbeddedChunks.map((chunk) => ({
-          organization_id: organizationId,
-          project_id:      projectId,
-          file_name:       chunk.fileName,
-          chunk_index:     chunk.chunkIndex,
-          content:         chunk.content,
-          embedding:       chunk.embedding,
-          metadata: {
-            file_type:  chunk.fileType,
-            created_at: new Date().toISOString(),
-          },
-        }));
-
-        const { error: insertError } = await supabase
-          .from("document_embeddings")
-          .insert(rows);
-
-        if (insertError) {
-          console.error("Error almacenando embeddings:", insertError);
-        } else {
-          console.log(`✅ ${rows.length} chunks vectorizados y almacenados`);
-        }
-      }
-
-      // 3b. Similarity Search for historical context
-      if (historicalContext && combinedText.length > 0) {
-        try {
-          const queryEmbedding = await generateQueryEmbedding(
-            combinedText.slice(0, 2000) // Use first 2000 chars as query context
-          );
-
-          const { data: similarChunks, error: searchError } = await supabase.rpc(
-            "match_document_chunks",
-            {
-              query_embedding:  queryEmbedding,
-              match_threshold:  0.7,
-              match_count:      5,
-              filter_org_id:    organizationId,
-            }
-          );
-
-          if (!searchError && similarChunks && similarChunks.length > 0) {
-            historicalContext_text = [
-              "\n\n=== CONTEXTO HISTÓRICO (Auditorías Previas) ===",
-              "Usa estos fragmentos de auditorías anteriores para enriquecer tu análisis:",
-              ...similarChunks.map(
-                (c: { file_name: string; similarity: number; content: string }) =>
-                  `[${c.file_name} | Similitud: ${(c.similarity * 100).toFixed(1)}%]\n${c.content}`
-              ),
-              "=== FIN DE CONTEXTO HISTÓRICO ===",
-            ].join("\n");
-
-            console.log(`📚 ${similarChunks.length} fragmentos históricos recuperados`);
+          if (fetchError) {
+            console.error(`[RAG_ERROR] Supabase fetch failed:`, fetchError);
+            throw new Error(`Error recuperando evidencia de Supabase: ${fetchError.message}`);
           }
-        } catch (e) {
-          console.warn("Error en similarity search:", e);
+          
+          if (chunks && chunks.length > 0) {
+            combinedText = chunks.map(c => `[Archivo: ${c.file_name}]\n${c.content}`).join("\n\n---\n\n");
+            console.log(`[RAG] Loaded ${chunks.length} chunks from Supabase for analysis`);
+          } else {
+            console.warn(`[RAG_WARNING] No chunks found for project ${projectId} in Supabase`);
+          }
+
+          if (historicalContext && combinedText.length > 0) {
+            try {
+              console.log(`[RAG] Searching for historical context...`);
+              const queryEmbedding = await generateQueryEmbedding(combinedText.slice(0, 2000));
+              const { data: similarChunks, error: searchError } = await supabase.rpc(
+                "match_document_chunks",
+                {
+                  query_embedding:  queryEmbedding,
+                  match_threshold:  0.7,
+                  match_count:      5,
+                  filter_org_id:    organizationId,
+                }
+              );
+
+              if (searchError) {
+                console.error(`[RAG_HISTORICAL_ERROR] RPC match failed:`, searchError);
+              } else if (similarChunks && similarChunks.length > 0) {
+                historicalContext_text = [
+                  "\n\n=== CONTEXTO HISTÓRICO (AuditorIAS Previas) ===",
+                  ...similarChunks.map((c: any) => `[${c.file_name}]\n${c.content}`),
+                  "=== FIN DE CONTEXTO HISTÓRICO ===",
+                ].join("\n");
+                console.log(`[RAG] Found ${similarChunks.length} historical snippets`);
+              }
+            } catch (e) {
+              console.warn("[RAG_WARNING] Error in historical search (Non-critical):", e);
+            }
+          }
         }
-      }
-    }
 
-    // ── 4. Build Gemini Prompt ────────────────────────────────────────────
-    const promptText = [
-      "Analiza la siguiente metadata operativa y genera el reporte forense completo:",
-      "",
-      combinedText,
-      historicalContext_text,
-    ].join("\n");
+        if (!combinedText.trim()) {
+          console.error(`[ANALYSIS_ERROR] No text content found for analysis`);
+          throw new Error("No se encontró evidencia para analizar. Por favor, asegúrate de que la ingesta de archivos se completó correctamente.");
+        }
 
-    // ── 5. Call Gemini 2.5 Flash ──────────────────────────────────────────
-    const response = await ai.models.generateContent({
-      model:    aiModel,
-      contents: promptText,
-      config: {
-        temperature:      aiTemperature,
-        responseMimeType: "application/json",
-        responseSchema,
-        systemInstruction: SYSTEM_PROMPT_FORENSIC,
-      },
-    });
-
-    if (!response.text) {
-      throw new Error("Respuesta vacía de Gemini");
-    }
-
-    const forensicReport = JSON.parse(response.text);
-
-    // ── 6. Persist Structured Report to Supabase ──────────────────────────
-    let dbRecord = null;
-    if (allowStorage) {
-      const { data, error: dbError } = await supabase
-        .from("forensic_reports")
-        .upsert(
-          {
-            organization_id:  organizationId,
-            project_name:     forensicReport.report_metadata.project_name,
-            payload_completo: forensicReport,
-            updated_at:       new Date().toISOString(),
+        // --- STAGE 2: MODEL INITIALIZATION ---
+        currentStage = "MODEL_INIT";
+        console.log(`[STAGE: ${currentStage}] Initializing Gemini with model: ${aiModel}`);
+        
+        // Support for 1.5, 2.0 and the user's custom "2.5" naming
+        const isKnownRecentModel = aiModel.includes('1.5') || aiModel.includes('2.0') || aiModel.includes('2.5');
+        const targetModel = isKnownRecentModel ? aiModel : 'gemini-1.5-flash';
+        
+        const model = genAI.getGenerativeModel({ 
+          model: targetModel,
+          systemInstruction: SYSTEM_PROMPT_FORENSIC,
+          generationConfig: {
+            temperature: aiTemperature,
+            responseMimeType: "application/json",
+            responseSchema: responseSchema as any,
+            maxOutputTokens: 8192, // Prevent runaway generation/hallucinations
           },
-          { onConflict: "organization_id" }
-        )
-        .select()
-        .single();
+        });
 
-      if (dbError) {
-        console.error("Error guardando reporte en Supabase:", dbError);
-      } else {
-        dbRecord = data;
+        // --- STAGE 3: INFERENCE ---
+        currentStage = "GEMINI_INFERENCE";
+        console.log(`[STAGE: ${currentStage}] Running forensic analysis (Inference L2)...`);
+        const promptText = `PROYECTO: ${projectId}\nORGANIZACIÓN: ${organizationId}\n\nDATOS DEL INVENTARIO ACTUAL PARA AUDITORÍA:\n${combinedText}\n${historicalContext_text}`;
+        
+        const startTime = Date.now();
+        const result = await model.generateContent(promptText);
+        const responseText = result.response.text();
+        const duration = (Date.now() - startTime) / 1000;
+        
+        console.log(`[STAGE: ${currentStage}] Inference completed in ${duration.toFixed(2)}s. Result size: ${responseText.length} chars`);
+        
+        // --- STAGE 4: PARSING & PERSISTENCE ---
+        currentStage = "REPORT_PERSISTENCE";
+        console.log(`[STAGE: ${currentStage}] Parsing result and saving report...`);
+        let forensicReport;
+        try {
+          forensicReport = JSON.parse(responseText);
+        } catch (e) {
+          console.error("[PARSE_ERROR] JSON Parse Error. Raw output snippet:", responseText.slice(0, 500));
+          // Save for debugging
+          try {
+            const fs = require('fs');
+            const path = require('path');
+            const debugPath = path.join(process.cwd(), 'scratch', `failed_report_${Date.now()}.json`);
+            fs.writeFileSync(debugPath, responseText);
+            console.log(`[DEBUG] Saved failed response to ${debugPath}`);
+          } catch (fsErr) {
+            console.warn("[DEBUG] Failed to save debug file:", fsErr);
+          }
+          throw new Error("El motor forense generó una estructura de datos ilegible. Intenta reduciendo la temperatura del modelo.");
+        }
+
+        let dbRecord = null;
+        if (allowStorage) {
+          console.log(`[PERSISTENCE] Upserting report to forensic_reports...`);
+          const { data, error: dbError } = await retrySupabase(async () => 
+            await supabase
+              .from("forensic_reports")
+              .upsert({
+                organization_id:  organizationId,
+                project_id:       projectId,
+                project_name:     forensicReport.report_metadata.project_name || "Proyecto Sin Nombre",
+                payload_completo: forensicReport,
+                updated_at:       new Date().toISOString(),
+              }, { onConflict: "project_id" })
+              .select().single()
+          );
+          
+          dbRecord = data;
+          if (dbError) {
+            console.error(`[PERSISTENCE_ERROR] Supabase upsert failed:`, dbError);
+            throw new Error(`Fallo al persistir el reporte final: ${dbError.message}`);
+          }
+        }
+
+        // Cleanup if Temporal
+        if (isTemporal) {
+          console.log(`[CLEANUP] Removing temporal data for project: ${projectId}`);
+          const { error: cleanupError } = await supabase.from("document_embeddings").delete().eq("project_id", projectId);
+          if (cleanupError) console.warn(`[CLEANUP_WARNING] Failed to remove temporal embeddings:`, cleanupError.message);
+        }
+
+        console.log(`[ANALYSIS] COMPLETED SUCCESSFULLY for project: ${projectId}`);
+        return NextResponse.json({ 
+          success: true, 
+          report: forensicReport, 
+          dbRecord,
+          stage: "COMPLETED" as AuditStage
+        });
+
+      } catch (err: any) {
+        console.error(`[CRITICAL_FAILURE] Error in stage ${currentStage}:`, err.message);
+        return NextResponse.json({ 
+          success: false, 
+          error: err.message || "Error interno del motor forense",
+          stage: currentStage 
+        }, { status: 500 });
       }
     }
 
-    // ── 7. Return to Frontend ─────────────────────────────────────────────
-    return NextResponse.json({
-      success: true,
-      report:  forensicReport,
-      meta: {
-        vectorized:       allowStorage,
-        historicalChunks: historicalContext_text ? true : false,
-        filesProcessed:   fileBuffers.map((f) => f.name),
-      },
-      dbRecord,
-    });
+    // ── 4. Handle Action: CLEANUP ─────────────────────────────────────────
+    if (action === "cleanup") {
+      if (bodyJson) {
+        projectId = bodyJson.projectId || projectId;
+      } else if (formData) {
+        projectId = (formData.get("projectId") as string) || projectId;
+      }
+
+      if (!projectId) return NextResponse.json({ success: false, error: "Project ID required for cleanup" }, { status: 400 });
+
+      const { error: delEmbeds } = await supabase.from("document_embeddings").delete().eq("project_id", projectId);
+      const { error: delReport } = await supabase.from("forensic_reports").delete().eq("project_id", projectId);
+
+      return NextResponse.json({ success: true, deleted: { embeds: !delEmbeds, report: !delReport } });
+    }
+
+    return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
+
   } catch (error: any) {
-    console.error("Error en el peritaje forense:", error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Fallo en la inferencia forense" },
-      { status: 500 }
-    );
+    console.error("Critical error in forensic route:", error);
+    return NextResponse.json({ success: false, error: error.message || "Internal server error" }, { status: 500 });
   }
 }

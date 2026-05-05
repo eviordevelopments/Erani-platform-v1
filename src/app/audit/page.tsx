@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import Sidebar from "@/components/Sidebar";
@@ -36,19 +37,34 @@ import {
   TrendingUp,
   ArrowUpRight,
   BarChart,
-  FileJson
+  FileJson,
+  Server
 } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
+import { useAuth } from "@/context/AuthContext";
+import { auditLogger } from "@/lib/auditLogger";
 import { useRef } from "react";
 import { ForensicReport } from "@/types/forensic";
 import DonutChart from "@/components/DonutChart";
+import RealtimeLogTerminal from "@/components/RealtimeLogTerminal";
+import { supabase } from "@/lib/supabase";
+
+interface ForensicFile {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  status: "pending" | "ingesting" | "completed" | "error";
+  progress: number;
+  error?: string;
+}
 
 interface Project {
   id: string;
   name: string;
   icon?: string;
   size: "small" | "medium" | "large";
-  files: any[];
+  files: ForensicFile[];
   status: "idle" | "processing" | "completed";
   createdAt: string;
   serverRegion: string;
@@ -71,6 +87,8 @@ const PROJECT_SIZES = {
 
 export default function AuditProtocolPage() {
   const { isSidebarCollapsed, uploadedFiles } = useDashboard();
+  const { user, profile, updateErisBalance } = useAuth();
+  const router = useRouter();
   const [view, setView] = useState<"setup" | "manage" | "processing" | "report">("manage");
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -80,10 +98,14 @@ export default function AuditProtocolPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [selectingIconFor, setSelectingIconFor] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [actualFiles, setActualFiles] = useState<Record<string, File[]>>({});
 
   // Processing Animation State
   const [processingProgress, setProcessingProgress] = useState(0);
   const [currentStepIdx, setCurrentStepIdx] = useState(0);
+  const [analysisLogs, setAnalysisLogs] = useState<{ id: string; msg: string; type: 'info' | 'success' | 'warning' }[]>([]);
+  const [analysisError, setAnalysisError] = useState<{ message: string; stage: string } | null>(null);
+  const [inferenceStats, setInferenceStats] = useState({ memory: 0.8, params: 12.1 });
   
   const ICON_LIBRARY = [
     { id: 'folder', icon: Folder },
@@ -97,10 +119,11 @@ export default function AuditProtocolPage() {
   ];
 
   const PROCESSING_STEPS = [
-    { label: "Triangulando Logs Operativos", icon: Layers },
-    { label: "Análisis de Dark Data & Metadata", icon: Database },
-    { label: "Cálculo de Rentabilidad Forense", icon: Cpu },
-    { label: "Generando Reporte Ejecutivo Bento", icon: FileText }
+    { id: "METADATA_PARSING", label: "Consolidación de Archivos y Metadata", icon: FileText },
+    { id: "RAG_RETRIEVAL", label: "Triangulación de Logs Operativos (RAG)", icon: Layers },
+    { id: "MODEL_INIT", label: "Inicializando Motor de Inferencia ERANI V1", icon: Cpu },
+    { id: "GEMINI_INFERENCE", label: "Análisis Forense con Inferencia Estratégica", icon: Database },
+    { id: "REPORT_PERSISTENCE", label: "Generando Reporte Ejecutivo de Alta Fidelidad", icon: FileJson }
   ];
 
   const handleChangeIcon = (projectId: string, iconId: string) => {
@@ -109,9 +132,35 @@ export default function AuditProtocolPage() {
   };
 
   const toggleProjectSetting = (projectId: string, setting: 'allowStorage' | 'historicalContext' | 'aiModel' | 'aiTemperature', value?: any) => {
-    setProjects(prev => prev.map(p => 
-      p.id === projectId ? { ...p, settings: { ...p.settings, [setting]: value !== undefined ? value : !p.settings[setting as keyof typeof p.settings] } } : p
-    ));
+    setProjects(prev => prev.map(p => {
+      if (p.id === projectId) {
+        const updated = { ...p, settings: { ...p.settings, [setting]: value !== undefined ? value : !p.settings[setting as keyof typeof p.settings] } };
+        // Sync to DB
+        syncProjectToDB(updated);
+        return updated;
+      }
+      return p;
+    }));
+  };
+
+  const syncProjectToDB = async (project: Project) => {
+    if (!profile?.organization_id) return;
+    
+    const { error } = await supabase
+      .from('audits')
+      .upsert({
+        id: project.id.includes('-') && project.id.length > 20 ? project.id : undefined, // Check if it's a UUID
+        organization_id: profile.organization_id,
+        created_by: profile.id,
+        status: project.status,
+        metadata: {
+          ...project,
+          // Avoid circular or redundant data if needed
+        },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+
+    if (error) console.error("Error syncing project to DB:", error);
   };
 
   // New Project Form
@@ -124,70 +173,140 @@ export default function AuditProtocolPage() {
     teamAccess: ["Admin", "Security Ops"],
     isTemporal: false,
     expirationHours: 24,
-    aiModel: "gemini-1.5-flash",
+    aiModel: "gemini-2.5-flash",
     aiTemperature: 0.7
   });
 
-  // Load projects from localStorage
+  // Load projects from Supabase
   useEffect(() => {
-    const saved = localStorage.getItem("erani_audit_projects");
-    if (saved) {
-      setProjects(JSON.parse(saved));
-    } else {
-      // Default mock project
-      const mockProject: Project = {
-        id: "PRJ-" + Math.random().toString(36).substr(2, 9).toUpperCase(),
-        name: "Auditoría de Rentabilidad Q1",
-        size: "medium",
-        files: [],
-        status: "completed",
-        createdAt: new Date().toISOString(),
-        serverRegion: "us-west",
-        teamAccess: ["Admin", "Security Ops"],
-        isTemporal: false,
-        expirationHours: 24,
-        settings: { 
-          allowStorage: true, 
-          historicalContext: true,
-          aiModel: "gemini-1.5-flash",
-          aiTemperature: 0.7
+    if (profile?.organization_id) {
+      const fetchProjects = async () => {
+        const { data, error } = await supabase
+          .from('audits')
+          .select('*')
+          .eq('organization_id', profile.organization_id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error("Error loading audits:", error);
+          return;
+        }
+
+        if (data && data.length > 0) {
+          const mappedProjects: Project[] = data.map(d => ({
+            id: d.id,
+            name: d.metadata?.name || "Proyecto sin nombre",
+            icon: d.metadata?.icon || "folder",
+            size: d.metadata?.size || "medium",
+            files: d.metadata?.files || [],
+            status: d.status as any,
+            createdAt: d.created_at,
+            serverRegion: d.metadata?.serverRegion || "us-west",
+            teamAccess: d.metadata?.teamAccess || [],
+            isTemporal: d.metadata?.isTemporal || false,
+            expirationHours: d.metadata?.expirationHours || 24,
+            settings: d.metadata?.settings || {
+              allowStorage: true,
+              historicalContext: true,
+              aiModel: "gemini-2.5-flash",
+              aiTemperature: 0.7
+            }
+          }));
+          setProjects(mappedProjects);
+        } else {
+          // If no projects in DB, set a default mock one but don't save it yet
+          const mockProject: Project = {
+            id: "PRJ-" + Math.random().toString(36).substr(2, 9).toUpperCase(),
+            name: "Auditoría de Rentabilidad Q1",
+            size: "medium",
+            files: [],
+            status: "completed",
+            createdAt: new Date().toISOString(),
+            serverRegion: "us-west",
+            teamAccess: ["Admin", "Security Ops"],
+            isTemporal: false,
+            expirationHours: 24,
+            settings: { 
+              allowStorage: true, 
+              historicalContext: true,
+              aiModel: "gemini-2.5-flash",
+              aiTemperature: 0.7
+            }
+          };
+          setProjects([mockProject]);
         }
       };
-      setProjects([mockProject]);
+      fetchProjects();
     }
-  }, []);
+  }, [profile]);
 
-  // Save projects to localStorage
-  useEffect(() => {
-    localStorage.setItem("erani_audit_projects", JSON.stringify(projects));
-  }, [projects]);
-
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     if (!newProject.name) return;
     
+    // Deduct ERIS based on project size
+    const cost = newProject.size === 'small' ? 15 : newProject.size === 'large' ? 45 : 30;
+    const currentBalance = user?.user_metadata?.eris_balance ?? 100;
+    
+    await updateErisBalance(Math.max(0, currentBalance - cost));
+
+    // Save to Supabase
+    const { data, error } = await supabase
+      .from('audits')
+      .insert({
+        organization_id: profile?.organization_id,
+        created_by: profile?.id,
+        status: 'idle',
+        metadata: {
+          name: newProject.name,
+          icon: "folder",
+          size: newProject.size,
+          files: [],
+          serverRegion: newProject.serverRegion,
+          teamAccess: newProject.teamAccess,
+          isTemporal: newProject.isTemporal,
+          expirationHours: newProject.expirationHours,
+          settings: { 
+            allowStorage: newProject.allowStorage, 
+            historicalContext: newProject.historicalContext,
+            aiModel: newProject.aiModel,
+            aiTemperature: newProject.aiTemperature
+          }
+        }
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error creating project in Supabase:", error);
+      return;
+    }
+
     const project: Project = {
-      id: "PRJ-" + Math.random().toString(36).substr(2, 9).toUpperCase(),
-      name: newProject.name,
-      icon: "folder",
-      size: newProject.size,
+      id: data.id,
+      name: data.metadata.name,
+      icon: data.metadata.icon,
+      size: data.metadata.size,
       files: [],
       status: "idle",
-      createdAt: new Date().toISOString(),
-      serverRegion: newProject.serverRegion,
-      teamAccess: newProject.teamAccess,
-      isTemporal: newProject.isTemporal,
-      expirationHours: newProject.expirationHours,
-      settings: { 
-        allowStorage: newProject.allowStorage, 
-        historicalContext: newProject.historicalContext,
-        aiModel: newProject.aiModel,
-        aiTemperature: newProject.aiTemperature
-      }
+      createdAt: data.created_at,
+      serverRegion: data.metadata.serverRegion,
+      teamAccess: data.metadata.teamAccess,
+      isTemporal: data.metadata.isTemporal,
+      expirationHours: data.metadata.expirationHours,
+      settings: data.metadata.settings
     };
     
     setProjects([project, ...projects]);
     setActiveProjectId(project.id);
     setView("setup");
+
+    // LOG: Project Created
+    await auditLogger.log('PROJECT_CREATE', `Proyecto creado: ${project.name}`, { 
+      projectId: project.id, 
+      size: project.size,
+      region: project.serverRegion
+    }, 'plus');
+
     setNewProject({ 
       name: "", 
       size: "small", 
@@ -197,27 +316,117 @@ export default function AuditProtocolPage() {
       teamAccess: ["Admin", "Security Ops"],
       isTemporal: false,
       expirationHours: 24,
-      aiModel: "gemini-1.5-flash",
+      aiModel: "gemini-2.5-flash",
       aiTemperature: 0.7
     });
   };
 
-  const handleDeleteProject = (id: string) => {
-    setProjects(projects.filter(p => p.id !== id));
-    if (activeProjectId === id) setActiveProjectId(null);
+  const handleDeleteProject = async (id: string) => {
+    if (confirm("¿Estás seguro de que deseas eliminar este proyecto? Esta acción es irreversible.")) {
+      const { error } = await supabase
+        .from('audits')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error("Error deleting project:", error);
+        return;
+      }
+
+      setProjects(projects.filter(p => p.id !== id));
+      if (activeProjectId === id) setActiveProjectId(null);
+    }
   };
 
-  const handleFiles = (incomingFiles: File[]) => {
-    if (activeProjectId && incomingFiles.length > 0) {
+  const ingestFile = async (projectId: string, file: File, fileId: string) => {
+    try {
       setProjects(prev => prev.map(p => {
-        if (p.id === activeProjectId) {
+        if (p.id === projectId) {
           return {
             ...p,
-            files: [...p.files, ...incomingFiles.map(f => ({ name: f.name, size: f.size, type: f.type, id: Math.random().toString() }))]
+            files: p.files.map(f => f.id === fileId ? { ...f, status: "ingesting", progress: 10 } : f)
           };
         }
         return p;
       }));
+
+      const formData = new FormData();
+      formData.append('action', 'ingest');
+      formData.append('projectId', projectId);
+      formData.append('organizationId', profile?.organization_id || 'org_erani_test'); 
+      formData.append('files', file);
+
+      const response = await fetch(`/api/forensic?action=ingest`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error: ${response.status}`);
+      }
+
+      setProjects(prev => prev.map(p => {
+        if (p.id === projectId) {
+          return {
+            ...p,
+            files: p.files.map(f => f.id === fileId ? { ...f, status: "completed", progress: 100 } : f)
+          };
+        }
+        return p;
+      }));
+
+      // LOG: File Ingested
+      await auditLogger.log('FILE_UPLOAD', `Archivo ingerido: ${file.name}`, { 
+        projectId, 
+        fileName: file.name,
+        fileSize: file.size
+      }, 'upload');
+    } catch (err: any) {
+      console.error("Error ingesting file:", err);
+      setProjects(prev => prev.map(p => {
+        if (p.id === projectId) {
+          return {
+            ...p,
+            files: p.files.map(f => f.id === fileId ? { ...f, status: "error", error: err.message, progress: 0 } : f)
+          };
+        }
+        return p;
+      }));
+    }
+  };
+
+  const handleFiles = (incomingFiles: File[]) => {
+    if (activeProjectId && incomingFiles.length > 0) {
+      // Store actual File objects for the session (non-persisted)
+      setActualFiles(prev => ({
+        ...prev,
+        [activeProjectId]: [...(prev[activeProjectId] || []), ...incomingFiles]
+      }));
+
+      const newFiles: ForensicFile[] = incomingFiles.map(f => ({
+        id: Math.random().toString(36).substr(2, 9),
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        status: "pending",
+        progress: 0
+      }));
+
+      setProjects(prev => prev.map(p => {
+        if (p.id === activeProjectId) {
+          return {
+            ...p,
+            files: [...p.files, ...newFiles]
+          };
+        }
+        return p;
+      }));
+
+      // Start ingestion for each file
+      incomingFiles.forEach((file, index) => {
+        ingestFile(activeProjectId, file, newFiles[index].id);
+      });
     }
   };
 
@@ -235,67 +444,128 @@ export default function AuditProtocolPage() {
     if (view === "processing" && activeProject) {
       setProcessingProgress(0);
       setCurrentStepIdx(0);
+      setAnalysisLogs([]);
+      setAnalysisError(null);
       
       let isSubscribed = true;
 
+      const addLog = (msg: string, type: 'info' | 'success' | 'warning' = 'info') => {
+        if (!isSubscribed) return;
+        setAnalysisLogs(prev => [...prev.slice(-15), { id: Math.random().toString(36).substr(2, 9), msg, type }]);
+      };
+
       const triggerAnalysis = async () => {
         try {
-          // Build multipart FormData with actual files + project config
+          // Manual progress increments for UX while waiting for stages
+          const progressInterval = setInterval(() => {
+            setProcessingProgress(prev => {
+              const stepSize = 100 / PROCESSING_STEPS.length;
+              const targetMax = (currentStepIdx + 0.8) * stepSize;
+              if (prev < targetMax) return prev + 0.15;
+              return prev;
+            });
+          }, 60);
+
+          // Simulate some granular logs based on steps
+          const logInterval = setInterval(() => {
+            const step = PROCESSING_STEPS[currentStepIdx];
+            const randomLogs = {
+              METADATA_PARSING: ["Analizando headers de archivos...", "Extrayendo metadatos de usuario...", "Validando integridad de hashes...", "Estructurando vectores base..."],
+              RAG_RETRIEVAL: ["Consultando base de vectores...", "Triangulando patrones históricos...", "Recuperando fragmentos de contexto...", "Aumentando precisión de búsqueda..."],
+              MODEL_INIT: ["Calentando motores de inferencia...", "Sincronizando pesos del modelo...", "Estableciendo conexión segura GTO...", "Optimizando latencia de clúster..."],
+              GEMINI_INFERENCE: ["Ejecutando razonamiento probabilístico...", "Detectando anomalías operativas...", "Calculando impacto de inacción (COI)...", "Verificando consistencia semántica..."],
+              REPORT_PERSISTENCE: ["Compilando hallazgos técnicos...", "Generando visualizaciones ejecutivas...", "Finalizando reporte de peritaje...", "Cifrando reporte de salida..."]
+            };
+            const currentMsgs = randomLogs[step.id as keyof typeof randomLogs] || [];
+            const msg = currentMsgs[Math.floor(Math.random() * currentMsgs.length)];
+            addLog(msg);
+
+            // Update stats
+            setInferenceStats(prev => ({
+              memory: Math.min(3.8, prev.memory + Math.random() * 0.1),
+              params: prev.params + Math.random() * 0.05
+            }));
+          }, 2000);
+
+          addLog(`Iniciando auditoría: ${activeProject.name}`, 'info');
+          addLog(`Configurando entorno en región ${activeProject.serverRegion}`, 'info');
+
           const formData = new FormData();
-          formData.append('organizationId',    'org_erani_test');
+          formData.append('action',           'analyze');
+          formData.append('organizationId',    profile?.organization_id || 'org_erani_test');
           formData.append('projectId',         activeProject.id);
           formData.append('allowStorage',      String(activeProject.settings.allowStorage));
           formData.append('historicalContext', String(activeProject.settings.historicalContext));
-          formData.append('aiModel',           activeProject.settings.aiModel || 'gemini-2.5-flash');
+          formData.append('aiModel',           activeProject.settings.aiModel || 'gemini-2.5-flash'); 
           formData.append('aiTemperature',     String(activeProject.settings.aiTemperature));
+          formData.append('isTemporal',        String(activeProject.isTemporal));
 
-          // Append actual File objects so the API can read & vectorize them
-          for (const file of activeProject.files) {
-            if (file instanceof File) {
-              formData.append('files', file, file.name);
-            }
-          }
-
-          const response = await fetch('/api/forensic', {
+          const response = await fetch(`/api/forensic?action=analyze`, {
             method: 'POST',
-            // No Content-Type header — browser sets multipart boundary automatically
             body: formData,
           });
 
-          if (!response.ok) throw new Error("Inferencia fallida");
-          
+          clearInterval(progressInterval);
+          clearInterval(logInterval);
+
           const result = await response.json();
 
+          if (!response.ok || !result.success) {
+            throw { 
+              message: result.error || `Error del servidor: ${response.status}`, 
+              stage: result.stage || "ERROR" 
+            };
+          }
+          
           if (isSubscribed) {
             console.log("Análisis forense completado en backend");
-            if (result.success && result.report) {
+            setProcessingProgress(100);
+            setCurrentStepIdx(PROCESSING_STEPS.length - 1);
+            
+            if (result.report) {
+              addLog("Análisis completado con éxito", 'success');
               setForensicReport(result.report);
+              // Small delay to let the user see the 100% completion
+              setTimeout(() => {
+                if (isSubscribed) {
+                   // Redirect to the dedicated forensic view with the specific report ID
+                   if (result.dbRecord?.id) {
+                     router.push(`/forensic?id=${result.dbRecord.id}&t=${Date.now()}`);
+                   } else {
+                     router.push(`/forensic?t=${Date.now()}`);
+                   }
+                }
+              }, 1200);
             }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Error en auditoría forense:", err);
+          if (isSubscribed) {
+            let errorMessage = err.message || "Fallo crítico en el motor forense.";
+            
+            // Specifically handle Google's high demand (503) error
+            if (errorMessage.toLowerCase().includes("high demand") || errorMessage.toLowerCase().includes("service unavailable")) {
+              errorMessage = "⚠️ ALTA DEMANDA: El modelo seleccionado está saturado en los servidores de Google. Por favor, intenta con 'Gemini 2.5 Flash-Lite' o reintenta en unos minutos.";
+            }
+
+            setAnalysisError({
+              message: errorMessage,
+              stage: err.stage || "UNKNOWN"
+            });
+            // Jump to the failing stage in UI if possible
+            const stageIdx = PROCESSING_STEPS.findIndex(s => s.id === err.stage);
+            if (stageIdx !== -1) {
+              setCurrentStepIdx(stageIdx);
+              setProcessingProgress((stageIdx / PROCESSING_STEPS.length) * 100 + 5);
+            }
+          }
         }
       };
 
       triggerAnalysis();
       
-      const interval = setInterval(() => {
-        setProcessingProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setTimeout(() => setView("report"), 1500); // Redirect to report
-            return 100;
-          }
-          const next = prev + 0.5;
-          const stepSize = 100 / PROCESSING_STEPS.length;
-          setCurrentStepIdx(Math.min(Math.floor(next / stepSize), PROCESSING_STEPS.length - 1));
-          return next;
-        });
-      }, 30);
-      
       return () => {
         isSubscribed = false;
-        clearInterval(interval);
       };
     }
   }, [view, activeProject]);
@@ -637,19 +907,18 @@ export default function AuditProtocolPage() {
                           <label className="text-[10px] uppercase font-black tracking-[0.2em] text-erani-blue flex items-center gap-2">
                              <Cpu className="w-4 h-4" /> Configuración del Motor IA
                           </label>
-                          
-                          <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-2 gap-6">
                              <div className="flex flex-col gap-3">
                                 <label className="text-[9px] uppercase font-bold text-gray-500">Modelo AI (Motor)</label>
                                 <select 
-                                  value={newProject.aiModel}
-                                  onChange={(e) => setNewProject({...newProject, aiModel: e.target.value})}
-                                  className="select-premium text-[10px] font-black"
-                                >
-                                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (Velocidad)</option>
-                                  <option value="gemini-1.5-pro">Gemini 1.5 Pro (Precisión)</option>
-                                  <option value="gemini-2.0-flash">Gemini 2.0 Flash (Experimental)</option>
-                                </select>
+                                   value={newProject.aiModel || "gemini-2.5-flash"}
+                                   onChange={(e) => setNewProject({...newProject, aiModel: e.target.value})}
+                                   className="select-premium text-[10px] font-black"
+                                 >
+                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Forense Primario)</option>
+                                    <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Alta Disponibilidad)</option>
+                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Análisis Profundo)</option>
+                                  </select>
                              </div>
                              <div className="flex flex-col gap-3">
                                 <div className="flex justify-between items-center">
@@ -766,20 +1035,60 @@ export default function AuditProtocolPage() {
                          
                          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                             <div className="grid grid-cols-2 gap-3">
-                               {activeProject?.files.map((file, idx) => (
-                                 <div key={idx} className="glassmorphism p-4 rounded-2xl flex items-center justify-between border border-glass-border group hover:border-erani-blue/30 transition-all">
-                                    <div className="flex items-center gap-3 truncate">
-                                       <div className="w-8 h-8 rounded-lg bg-erani-blue/10 flex items-center justify-center text-erani-blue shrink-0">
-                                          <FileText className="w-4 h-4" />
-                                       </div>
-                                       <div className="flex flex-col truncate">
-                                          <span className="text-[10px] font-bold text-foreground truncate">{file.name}</span>
-                                          <span className="text-[8px] font-black text-gray-600">{(file.size / 1024).toFixed(1)} KB</span>
-                                       </div>
+                                {activeProject?.files.map((file, idx) => (
+                                 <div key={file.id || idx} className="glassmorphism p-4 rounded-2xl flex flex-col gap-3 border border-glass-border group hover:border-erani-blue/30 transition-all">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3 truncate">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                          file.status === 'completed' ? 'bg-emerald-500/10 text-emerald-500' : 
+                                          file.status === 'error' ? 'bg-erani-coral/10 text-erani-coral' : 
+                                          'bg-erani-blue/10 text-erani-blue'
+                                        }`}>
+                                           {file.status === 'completed' ? <CheckCircle2 className="w-4 h-4" /> : 
+                                            file.status === 'error' ? <X className="w-4 h-4" /> : 
+                                            <FileText className="w-4 h-4" />}
+                                        </div>
+                                        <div className="flex flex-col truncate">
+                                           <span className="text-[10px] font-bold text-foreground truncate">{file.name}</span>
+                                           <span className="text-[8px] font-black text-gray-600">
+                                             {(file.size / 1024).toFixed(1)} KB • {
+                                               file.status === 'completed' ? 'Procesado' : 
+                                               file.status === 'ingesting' ? 'Ingestando...' :
+                                               file.status === 'error' ? 'Fallo' : 'Pendiente'
+                                             }
+                                           </span>
+                                        </div>
+                                      </div>
+                                      <button className="p-1.5 rounded-lg text-gray-700 hover:text-erani-coral hover:bg-erani-coral/10 transition-all">
+                                         <X className="w-3.5 h-3.5" />
+                                      </button>
                                     </div>
-                                    <button className="p-1.5 rounded-lg text-gray-700 hover:text-erani-coral hover:bg-erani-coral/10 transition-all opacity-0 group-hover:opacity-100">
-                                       <X className="w-3.5 h-3.5" />
-                                    </button>
+
+                                    {/* Progress Bar for Ingestion */}
+                                    {(file.status === 'ingesting' || file.status === 'completed' || file.status === 'error') && (
+                                      <div className="flex flex-col gap-1.5">
+                                        <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
+                                          <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${file.progress}%` }}
+                                            className={`h-full ${
+                                              file.status === 'completed' ? 'bg-emerald-500' : 
+                                              file.status === 'error' ? 'bg-erani-coral' : 
+                                              'bg-erani-blue animate-pulse'
+                                            }`}
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {file.status === 'error' && (
+                                      <div className="flex items-center gap-1.5 mt-1">
+                                        <AlertTriangle className="w-3 h-3 text-erani-coral shrink-0" />
+                                        <span className="text-[7px] font-black text-erani-coral uppercase truncate leading-tight" title={file.error}>
+                                          Error: {file.error}
+                                        </span>
+                                      </div>
+                                    )}
                                  </div>
                                ))}
                                {activeProject?.files.length === 0 && (
@@ -861,13 +1170,13 @@ export default function AuditProtocolPage() {
                                   </div>
                                </div>
                                <select 
-                                 value={activeProject?.settings.aiModel}
+                                 value={activeProject?.settings.aiModel || "gemini-2.5-flash"}
                                  onChange={(e) => toggleProjectSetting(activeProject!.id, 'aiModel', e.target.value)}
                                  className="bg-transparent text-[9px] font-black uppercase text-erani-blue border-none focus:ring-0 cursor-pointer text-right"
                                >
-                                  <option value="gemini-2.5-flash">Gemini 2.5 Flash ✦</option>
-                                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                                  <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                  <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+                                  <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                                </select>
                             </div>
 
@@ -900,7 +1209,7 @@ export default function AuditProtocolPage() {
                       <div className="mt-auto pt-6 border-t border-glass-border">
                           <button 
                              onClick={() => setView("processing")}
-                             disabled={activeProject?.files.length === 0}
+                             disabled={activeProject?.files.length === 0 || !activeProject?.files.some(f => f.status === 'completed')}
                              className="button-premium w-full py-6 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-4 disabled:opacity-30 shadow-xl shadow-erani-blue/20"
                           >
                              Ejecutar Análisis Forense <ChevronRight className="w-5 h-5" />
@@ -913,166 +1222,277 @@ export default function AuditProtocolPage() {
 
             {/* VIEW: PROCESSING */}
             {view === "processing" && (
-               <motion.div 
-                 key="processing"
-                 initial={{ opacity: 0 }}
-                 animate={{ opacity: 1 }}
-                 className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-xl flex flex-col items-center justify-center p-12 overflow-hidden"
-               >
-                 {/* Background flair */}
-                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                    <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] bg-erani-blue/10 blur-[150px] rounded-full animate-pulse" />
-                    <div className="absolute bottom-1/4 right-1/4 w-[600px] h-[600px] bg-erani-purple/10 blur-[150px] rounded-full animate-pulse delay-700" />
-                 </div>
+              <motion.div 
+                key="processing"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-50 bg-background/80 backdrop-blur-2xl flex flex-col overflow-hidden rounded-[3rem] border border-glass-border shadow-2xl"
+              >
+                {/* Header Progress Bar */}
+                <div className="absolute top-0 left-0 right-0 h-1.5 bg-foreground/5 z-20 overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${processingProgress}%` }}
+                    className="h-full bg-gradient-brand shadow-[0_0_15px_rgba(0,183,255,0.5)]"
+                  />
+                </div>
 
-                 <div className="relative mb-24">
-                    {/* Orbiting File Icons */}
-                    <motion.div 
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                      className="w-[450px] h-[450px] rounded-full border border-glass-border border-dashed relative"
-                    >
-                       {[0, 72, 144, 216, 288].map((angle, i) => (
-                          <motion.div 
-                            key={i}
-                            className="absolute w-12 h-12 rounded-2xl glassmorphism border border-glass-border flex items-center justify-center text-erani-blue shadow-2xl backdrop-blur-md"
-                            style={{ 
-                              top: `calc(50% - 24px + ${Math.sin(angle * Math.PI / 180) * 225}px)`,
-                              left: `calc(50% - 24px + ${Math.cos(angle * Math.PI / 180) * 225}px)`,
-                            }}
-                            animate={{ scale: [1, 1.15, 1], rotate: [0, 10, -10, 0] }}
-                            transition={{ duration: 3, repeat: Infinity, delay: i * 0.4 }}
-                          >
-                             {i % 2 === 0 ? <FileText className="w-6 h-6" /> : <Database className="w-6 h-6 text-erani-purple" />}
-                          </motion.div>
-                       ))}
-                    </motion.div>
-
-                    <div className="absolute inset-0 flex items-center justify-center">
-                       <div className="relative">
-                          <motion.div 
-                            animate={{ scale: [1, 1.08, 1] }}
-                            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                            className="relative z-10"
-                          >
-                             <Image src="/isologo.png" alt="ERANI" width={140} height={140} className="logo-adaptive" />
-                          </motion.div>
-                          <div className="absolute inset-0 bg-erani-blue/20 blur-[60px] rounded-full -z-10 animate-pulse" />
-                       </div>
+                <div className="flex h-full w-full">
+                  {/* Left Panel: High-Fidelity Visualizer */}
+                  <div className="hidden lg:flex lg:w-[42%] h-full flex-col items-center justify-center relative border-r border-glass-border/20 bg-black/2 dark:bg-white/1 overflow-hidden">
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,rgba(0,183,255,0.05)_0%,transparent_70%)]" />
+                      <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-erani-blue/5 blur-[120px] rounded-full animate-pulse" />
+                      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-erani-purple/5 blur-[120px] rounded-full animate-pulse delay-700" />
+                      
+                      {/* Data Orbs / Particles for depth */}
+                      {[...Array(20)].map((_, i) => (
+                        <motion.div
+                          key={i}
+                          className="absolute w-1 h-1 rounded-full bg-erani-blue/30"
+                          style={{ 
+                            left: `${Math.random() * 100}%`,
+                            top: `${Math.random() * 100}%`
+                          }}
+                          animate={{ 
+                            y: [0, -100],
+                            opacity: [0, 0.8, 0],
+                            scale: [0, 1.5, 0]
+                          }}
+                          transition={{ 
+                            duration: 5 + Math.random() * 5, 
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                            delay: Math.random() * 10
+                          }}
+                        />
+                      ))}
                     </div>
-                 </div>
 
-                 <div className="w-full max-w-3xl flex flex-col gap-12 relative z-10">
-                    <div className="flex flex-col items-center gap-4 text-center">
-                       <AnimatePresence mode="wait">
-                          <motion.h2 
+                    {/* Triangulation Animation Container */}
+                    <div className="relative w-full aspect-square max-w-[450px] flex items-center justify-center">
+                      {/* Rotating Lines / Grid */}
+                      <svg className="absolute inset-0 w-full h-full opacity-30" viewBox="0 0 500 500">
+                        {/* Static Hex Grid Background */}
+                        <defs>
+                          <pattern id="hexGrid" width="50" height="43.3" patternUnits="userSpaceOnUse">
+                            <path d="M25 0 L50 14.4 L50 43.3 L25 57.7 L0 43.3 L0 14.4 Z" fill="none" stroke="currentColor" strokeWidth="0.2" />
+                          </pattern>
+                        </defs>
+                        <rect width="100%" height="100%" fill="url(#hexGrid)" />
+
+                        <motion.circle 
+                          cx="250" cy="250" r="220" 
+                          fill="none" stroke="var(--erani-blue)" strokeWidth="0.5" strokeDasharray="10 15"
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+                        />
+                        <motion.circle 
+                          cx="250" cy="250" r="160" 
+                          fill="none" stroke="var(--erani-purple)" strokeWidth="0.5" strokeDasharray="5 10"
+                          animate={{ rotate: -360 }}
+                          transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
+                        />
+                        
+                        {/* Dynamic connection lines with "pulse" effect */}
+                        {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
+                          <g key={i}>
+                            <motion.line 
+                              x1="250" y1="250"
+                              x2={250 + Math.cos(angle * Math.PI / 180) * 180}
+                              y2={250 + Math.sin(angle * Math.PI / 180) * 180}
+                              stroke="var(--erani-blue)"
+                              strokeWidth="1"
+                              strokeOpacity="0.2"
+                              animate={{ strokeOpacity: [0.1, 0.4, 0.1] }}
+                              transition={{ duration: 3, repeat: Infinity, delay: i * 0.4 }}
+                            />
+                            <motion.circle
+                              cx={250 + Math.cos(angle * Math.PI / 180) * 180}
+                              cy={250 + Math.sin(angle * Math.PI / 180) * 180}
+                              r="2"
+                              fill="var(--erani-blue)"
+                              animate={{ scale: [1, 2, 1], opacity: [0.5, 1, 0.5] }}
+                              transition={{ duration: 2, repeat: Infinity, delay: i * 0.4 }}
+                            />
+                          </g>
+                        ))}
+                      </svg>
+
+                      {/* Central Core (Erani Logo) */}
+                      <motion.div 
+                        animate={{ 
+                          scale: [1, 1.02, 1],
+                        }}
+                        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                        className="relative z-20"
+                      >
+                        <div className="w-32 h-32 lg:w-40 lg:h-40 bg-background/40 backdrop-blur-3xl rounded-full flex items-center justify-center border border-erani-blue/30 shadow-[0_0_50px_rgba(0,183,255,0.2)] relative overflow-hidden group">
+                           <div className="absolute inset-0 bg-gradient-brand opacity-10" />
+                           <Image src="/isologo.png" alt="ERANI" width={90} height={90} className="logo-adaptive relative z-10" />
+                        </div>
+                      </motion.div>
+
+                      {/* Active Radar Sweep */}
+                      <motion.div 
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                        className="absolute w-[440px] h-[440px] pointer-events-none"
+                        style={{
+                          background: 'conic-gradient(from 0deg, transparent 0deg, rgba(0, 183, 255, 0.1) 60deg, transparent 60deg)'
+                        }}
+                      />
+                    </div>
+
+                    <div className="mt-8 flex flex-col items-center gap-4 px-12 text-center">
+                      <div className="flex items-center gap-3 px-4 py-1.5 rounded-full bg-erani-blue/10 border border-erani-blue/20">
+                         <div className="w-1.5 h-1.5 rounded-full bg-erani-blue animate-ping" />
+                         <span className="text-[9px] font-black uppercase tracking-[0.2em] text-erani-blue">Forensic Inference Engine</span>
+                      </div>
+                      <p className="text-xs font-semibold text-gray-400 font-montserrat tracking-tight leading-relaxed">
+                        Triangulando vectores de auditoría en <span className="text-erani-blue">GTO-{activeProject?.serverRegion}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right Panel: Professional Streaming & Control */}
+                  <div className="flex-1 h-full flex flex-col p-6 lg:p-12 relative bg-background overflow-hidden">
+                    <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full">
+                      {/* Current Stage Header */}
+                      <div className="mb-6 lg:mb-10">
+                        <div className="flex items-center gap-3 mb-4">
+                          <span className="text-[9px] font-black uppercase tracking-[0.3em] text-gray-500">Etapa de Análisis {currentStepIdx + 1}/5</span>
+                          <div className="h-px flex-1 bg-glass-border/30" />
+                        </div>
+                        
+                        <AnimatePresence mode="wait">
+                          <motion.div
                             key={currentStepIdx}
-                            initial={{ opacity: 0, y: 20 }}
+                            initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            className="text-4xl font-black uppercase tracking-tight text-foreground"
+                            exit={{ opacity: 0, y: -10 }}
+                            className="flex flex-col gap-2"
                           >
-                             {PROCESSING_STEPS[currentStepIdx].label}
-                          </motion.h2>
-                       </AnimatePresence>
-                       <p className="text-[10px] font-black text-erani-blue uppercase tracking-[0.4em] flex items-center gap-6">
-                          <span className="w-12 h-px bg-erani-blue/30" />
-                          Ejecutando Diagnóstico Forense {activeProject?.settings.aiModel.includes('pro') ? 'Gemini Pro' : 'Gemini Flash'}
-                          <span className="w-12 h-px bg-erani-blue/30" />
-                       </p>
-                       
-                       <motion.div 
-                         initial={{ opacity: 0, scale: 0.9 }}
-                         animate={{ opacity: 1, scale: 1 }}
-                         transition={{ delay: 1 }}
-                         className="flex items-center gap-4 px-6 py-3 rounded-2xl bg-erani-blue/10 border border-erani-blue/20"
-                       >
-                          <Zap className="w-4 h-4 text-erani-blue fill-erani-blue animate-pulse" />
-                          <div className="flex flex-col">
-                             <span className="text-[8px] uppercase font-black text-gray-500 tracking-widest">Inferencia en curso</span>
-                             <span className="text-[10px] font-black text-foreground">Consumo: <span className="text-erani-blue">-5.0 ERIS</span></span>
+                            <h2 className="text-3xl lg:text-4xl font-black uppercase tracking-tight text-foreground font-montserrat leading-tight">
+                              {PROCESSING_STEPS[currentStepIdx].label}
+                            </h2>
+                            <div className="flex items-center gap-2">
+                               <div className="flex gap-1">
+                                  {[1, 2, 3].map(i => (
+                                    <motion.div 
+                                      key={i}
+                                      animate={{ opacity: [0.3, 1, 0.3] }}
+                                      transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                                      className="w-1.5 h-1.5 rounded-full bg-erani-blue"
+                                    />
+                                  ))}
+                               </div>
+                               <span className="text-[10px] font-bold text-erani-blue uppercase tracking-widest animate-pulse">Procesando...</span>
+                            </div>
+                          </motion.div>
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Vertical Timeline Navigation */}
+                      <div className="mb-10 flex gap-2">
+                        {PROCESSING_STEPS.map((step, idx) => (
+                          <div key={step.id} className="flex-1 flex flex-col gap-2">
+                            <div className="relative h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={false}
+                                animate={{ 
+                                  width: idx < currentStepIdx ? "100%" : idx === currentStepIdx ? "50%" : "0%",
+                                  backgroundColor: idx <= currentStepIdx ? "var(--erani-blue)" : "transparent"
+                                }}
+                                className="absolute inset-0 transition-colors"
+                              />
+                            </div>
+                            <div className={`text-[8px] font-black uppercase tracking-tighter transition-colors ${idx === currentStepIdx ? 'text-erani-blue' : idx < currentStepIdx ? 'text-foreground/60' : 'text-foreground/20'}`}>
+                              {step.label.split(' ')[0]}
+                            </div>
                           </div>
-                          <div className="w-px h-8 bg-glass-border mx-2" />
-                          <div className="flex flex-col">
-                             <span className="text-[8px] uppercase font-black text-gray-500 tracking-widest">Token Count</span>
-                             <motion.span 
-                               animate={{ opacity: [0.5, 1, 0.5] }}
-                               transition={{ duration: 1.5, repeat: Infinity }}
-                               className="text-[10px] font-black text-foreground"
-                             >
-                               ~{Math.floor(processingProgress * 120)} Tokens
-                             </motion.span>
+                        ))}
+                      </div>
+
+                      {/* Analysis Streaming Terminal (REAL-TIME) */}
+                      {profile?.organization_id ? (
+                        <RealtimeLogTerminal organizationId={profile.organization_id} />
+                      ) : (
+                        <div className="flex-1 flex items-center justify-center bg-foreground/5 rounded-3xl border border-glass-border animate-pulse">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sincronizando con el Núcleo...</span>
+                        </div>
+                      )}
+
+                      {/* Footer Info */}
+                      <div className="flex items-center justify-between mt-6">
+                         <div className="flex items-center gap-8">
+                            <div className="flex flex-col">
+                               <span className="text-[8px] uppercase font-black text-gray-500 tracking-widest">Estado del Buffer</span>
+                               <span className="text-xs font-black text-foreground">{(processingProgress).toFixed(0)}% Sincronizado</span>
+                            </div>
+                            <div className="w-px h-8 bg-glass-border/30" />
+                            <div className="flex flex-col">
+                               <span className="text-[8px] uppercase font-black text-gray-500 tracking-widest">Nivel de Confianza</span>
+                               <span className="text-xs font-black text-erani-blue">99.98% Probabilístico</span>
+                            </div>
+                         </div>
+
+                         <button 
+                           onClick={() => setView("manage")}
+                           className="px-6 py-3 rounded-2xl bg-erani-coral/10 hover:bg-erani-coral/20 text-erani-coral text-[9px] font-black uppercase tracking-widest transition-all border border-erani-coral/20"
+                         >
+                           Interrumpir Análisis
+                         </button>
+                      </div>
+                    </div>
+
+                    {/* Error Overlay (Relative to Right Panel) */}
+                    <AnimatePresence>
+                      {analysisError && (
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          className="absolute inset-8 z-50 bg-background/95 backdrop-blur-xl rounded-[2.5rem] border border-erani-coral/30 p-12 flex flex-col items-center justify-center text-center shadow-2xl"
+                        >
+                          <div className="w-20 h-20 rounded-3xl bg-erani-coral/10 border border-erani-coral/20 flex items-center justify-center text-erani-coral mb-6">
+                            <AlertTriangle className="w-10 h-10" />
                           </div>
-                       </motion.div>
-                    </div>
-
-                    <div className="flex flex-col gap-5">
-                       <div className="flex items-center justify-between px-3">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Progreso de Sincronización</span>
-                          <span className="text-sm font-black text-foreground tabular-nums">{Math.floor(processingProgress)}%</span>
-                       </div>
-                       <div className="h-3 w-full bg-foreground/5 rounded-full overflow-hidden border border-glass-border p-0.5">
-                          <motion.div 
-                            className="h-full bg-gradient-brand rounded-full shadow-[0_0_15px_rgba(0,183,255,0.3)]"
-                            initial={{ width: "0%" }}
-                            animate={{ width: `${processingProgress}%` }}
-                            transition={{ duration: 0.1 }}
-                          />
-                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-5">
-                       {PROCESSING_STEPS.map((step, i) => {
-                         const Icon = step.icon;
-                         const isCompleted = i < currentStepIdx;
-                         const isActive = i === currentStepIdx;
-                         
-                         return (
-                           <motion.div 
-                             key={i}
-                             className={`p-6 rounded-[2.5rem] border transition-all duration-700 flex items-center gap-6 ${
-                               isCompleted ? 'bg-emerald-500/10 border-emerald-500/20 shadow-lg shadow-emerald-500/5' :
-                               isActive ? 'bg-erani-blue/10 border-erani-blue/30 shadow-2xl shadow-erani-blue/10 scale-[1.03]' :
-                               'bg-foreground/5 border-glass-border opacity-40'
-                             }`}
-                           >
-                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${
-                                isCompleted ? 'bg-emerald-500 text-white' :
-                                isActive ? 'bg-erani-blue text-white shadow-lg shadow-erani-blue/40' :
-                                'bg-foreground/10 text-gray-500'
-                              }`}>
-                                 {isCompleted ? <CheckCircle2 className="w-7 h-7" /> : <Icon className={`w-6 h-6 ${isActive ? 'animate-pulse' : ''}`} />}
-                              </div>
-                              <div className="flex flex-col">
-                                 <span className={`text-[11px] font-black uppercase tracking-tight ${isCompleted ? 'text-emerald-500' : isActive ? 'text-foreground' : 'text-gray-500'}`}>
-                                    {step.label}
-                                 </span>
-                                 {isActive && (
-                                   <motion.span 
-                                     animate={{ opacity: [0.4, 1, 0.4] }}
-                                     transition={{ duration: 1.5, repeat: Infinity }}
-                                     className="text-[8px] font-bold text-erani-blue uppercase tracking-widest mt-1"
-                                   >
-                                      Analizando vectores...
-                                   </motion.span>
-                                 )}
-                              </div>
-                           </motion.div>
-                         );
-                       })}
-                    </div>
-
-                    <div className="flex justify-center mt-12">
-                       <button 
-                         onClick={() => setView("manage")}
-                         className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 hover:text-erani-coral transition-all py-2 border-b border-transparent hover:border-erani-coral"
-                       >
-                          Interrumpir Proceso y Guardar como Borrador
-                       </button>
-                    </div>
-                 </div>
-               </motion.div>
+                          <h3 className="text-2xl font-black uppercase tracking-tight text-foreground mb-2">Fallo Crítico Detectado</h3>
+                          <p className="text-sm font-medium text-gray-500 max-w-md mb-10 leading-relaxed font-montserrat">
+                            {typeof analysisError === 'string' ? analysisError : (analysisError as any).message}
+                          </p>
+                          <div className="flex gap-4">
+                            <button 
+                              onClick={() => setView("manage")}
+                              className="px-10 py-4 rounded-full bg-foreground/5 hover:bg-foreground/10 text-[10px] font-black uppercase tracking-widest transition-all border border-glass-border"
+                            >
+                              Cancelar Operación
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                  setAnalysisError(null);
+                                  setProcessingProgress(0);
+                                  setCurrentStepIdx(0);
+                                  // Log the event
+                                  await auditLogger.log('FORENSIC_RETRY', 'Reintento de análisis forense', {}, 'rotate-ccw');
+                                  setView("manage");
+                                  setTimeout(() => setView("processing"), 100);
+                                }}
+                              className="px-12 py-4 rounded-full bg-erani-coral text-white shadow-xl shadow-erani-coral/30 text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all"
+                            >
+                              Reintentar Análisis
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              </motion.div>
             )}
+
 
             {/* VIEW: BENTO REPORT */}
             {view === "report" && forensicReport && (
