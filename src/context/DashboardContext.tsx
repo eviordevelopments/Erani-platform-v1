@@ -121,6 +121,25 @@ const DashboardContext = createContext<DashboardContextType>({
 export const DashboardProvider = ({ children }: { children: React.ReactNode }) => {
   const { profile } = useAuth();
   const [hasFetched, setHasFetched] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  const [preferences, setPreferences] = useState<UserPreferences>({
+    font_size: 16,
+    theme_color: "#0055A0",
+    custom_logo_url: null,
+  });
+
+  const [state, setState] = useState<DashboardState>({
+    processingState: "idle",
+    processingStep: "",
+    processingProgress: 0,
+    uploadedFiles: [],
+    insights: null,
+    sessions: [],
+    bentoOrder: DEFAULT_BENTO_ORDER,
+    feedback: [],
+    automations: [],
+  });
 
   // ─── Fetch from Supabase on mount ──────────────────────────────────────────
   useEffect(() => {
