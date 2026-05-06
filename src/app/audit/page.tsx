@@ -47,7 +47,7 @@ import { useRef } from "react";
 import { ForensicReport } from "@/types/forensic";
 import DonutChart from "@/components/DonutChart";
 import RealtimeLogTerminal from "@/components/RealtimeLogTerminal";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabaseClient";
 
 interface ForensicFile {
   id: string;
