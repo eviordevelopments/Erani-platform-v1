@@ -388,10 +388,47 @@ export async function POST(request: Request) {
           }
         }
 
+        // ── FALLBACK: If no chunks from Supabase, try inline file processing ──────
+        // This handles the case where:
+        //  1. ingest() failed (embedding dimension bug, table missing, etc.)
+        //  2. The user sent files directly in the analyze FormData
+        //  3. allowStorage=false was set (temporal mode without prior ingest)
+        if (!combinedText.trim() && formData) {
+          const inlineFiles = formData.getAll("files");
+          if (inlineFiles.length > 0) {
+            console.log(`[FALLBACK] No Supabase data found. Processing ${inlineFiles.length} inline file(s) directly...`);
+            const { extractTextFromFile, chunkText } = await import("@/lib/rag");
+            const textParts: string[] = [];
+            for (const f of inlineFiles) {
+              if (!(f instanceof File)) continue;
+              try {
+                const buffer = Buffer.from(await f.arrayBuffer());
+                const parsed = await extractTextFromFile(buffer, f.name);
+                const chunks = chunkText(parsed);
+                textParts.push(`[Archivo: ${f.name}]\n${chunks.map(c => c.content).join("\n")}`);
+                console.log(`[FALLBACK] Processed inline file: ${f.name} → ${chunks.length} chunks`);
+              } catch (fe: any) {
+                console.warn(`[FALLBACK] Could not parse inline file ${f.name}:`, fe.message);
+              }
+            }
+            if (textParts.length > 0) {
+              combinedText = textParts.join("\n\n---\n\n");
+              console.log(`[FALLBACK] Inline text extracted: ${combinedText.length} chars`);
+            }
+          }
+        }
+
         if (!combinedText.trim()) {
           console.error(`[ANALYSIS_ERROR] No text content found for analysis`);
-          throw new Error("No se encontró evidencia para analizar. Por favor, asegúrate de que la ingesta de archivos se completó correctamente.");
+          throw new Error(
+            "No se encontró evidencia para analizar. " +
+            "Asegúrate de: (1) haber ingerido los archivos ANTES de analizar, " +
+            "(2) que la tabla document_embeddings exista en Supabase (ejecuta forensic_vector_schema.sql), " +
+            "(3) que el proyecto ID coincida. " +
+            `ProjectID usado: ${projectId}`
+          );
         }
+
 
         // --- STAGE 2: MODEL INITIALIZATION ---
         currentStage = "MODEL_INIT";

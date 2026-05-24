@@ -37,14 +37,7 @@ const nextConfig = {
     ];
   },
 
-  async rewrites() {
-    return [
-      {
-        source: '/api/supabase/:path*',
-        destination: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/:path*`,
-      },
-    ];
-  },
+  // Removed rewrites to /api/supabase to prevent 401 errors from stripped headers
 };
 
 module.exports = nextConfig;

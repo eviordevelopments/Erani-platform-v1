@@ -66,11 +66,17 @@ export default function Sidebar() {
   };
 
   const userMeta = user?.user_metadata || {};
-  const logoSrc = profile?.avatar_url || userMeta.logoBase64 || "/isologo.png";
+  const logoSrc = profile?.avatar_url || userMeta.logoUrl || userMeta.logoBase64 || "/isologo.png";
   const erisBalance = userMeta.eris_balance !== undefined ? userMeta.eris_balance : 100;
   const erisPercentage = Math.min(100, Math.max(0, (erisBalance / 100) * 100));
   const fullName = profile?.full_name || userMeta.fullName || "Usuario";
-  const orgName = userMeta.orgName || profile?.role || "Cliente";
+  const userRole = profile?.role
+    ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
+    : userMeta.role
+    ? (userMeta.role as string).charAt(0).toUpperCase() + (userMeta.role as string).slice(1)
+    : "Cliente";
+  const orgName = userMeta.orgName || "";
+  const userSubtitle = orgName ? `${userRole} | ${orgName}` : userRole;
 
   return (
     <motion.aside 
@@ -234,7 +240,7 @@ export default function Sidebar() {
               <>
                 <div className="flex flex-col items-start gap-0.5 overflow-hidden">
                   <span className="text-[10px] font-black uppercase tracking-widest text-foreground truncate w-full text-left">{fullName}</span>
-                  <span className="text-[8px] font-medium text-nav-text lowercase truncate w-full text-left">{orgName}</span>
+                  <span className="text-[8px] font-medium text-nav-text truncate w-full text-left" title={userSubtitle}>{userSubtitle}</span>
                 </div>
                 <ChevronRight className={`w-4 h-4 ml-auto text-nav-text transition-transform shrink-0 ${showProfileMenu ? "rotate-90" : ""}`} />
               </>
@@ -254,15 +260,15 @@ export default function Sidebar() {
               >
                 <div className="flex flex-col gap-1">
                   {[
-                    { icon: Activity, label: "MIS ERIS", color: "text-erani-blue" },
-                    { icon: UserIcon, label: "MI PERFIL" },
-                    { icon: LogsIcon, label: "LOGS" },
-                    { icon: Headphones, label: "SOPORTE" },
+                    { icon: Activity, label: "MIS ERIS", color: "text-erani-blue", href: "/subscription" },
+                    { icon: UserIcon, label: "MI PERFIL", href: "/settings" },
+                    { icon: LogsIcon, label: "LOGS", href: "/reports" },
+                    { icon: Headphones, label: "SOPORTE", href: "/feedback" },
                   ].map((sub, i) => (
-                    <button key={i} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-foreground/5 transition-colors group/sub">
+                    <Link href={sub.href} key={i} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-foreground/5 transition-colors group/sub">
                       <sub.icon className={`w-3.5 h-3.5 ${sub.color || "text-foreground"}`} />
                       <span className="text-[8px] uppercase font-black tracking-widest">{sub.label}</span>
-                    </button>
+                    </Link>
                   ))}
                   <div className="h-px bg-white/5 my-1 mx-2" />
                   <button onClick={handleLogout} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-erani-coral/10 text-erani-coral transition-colors w-full">

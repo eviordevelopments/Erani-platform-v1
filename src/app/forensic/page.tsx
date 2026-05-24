@@ -266,7 +266,7 @@ function ForensicContent() {
 
         resumenConsolidacion: {
           fugaExterna: p.slide_2_analisis_forense?.resumen_consolidacion?.fuga_externa_mxn || 0,
-          fugaInterna: p.slide_2_analisis_forense?.resumen_consolidacion?.fuga_internal_mxn || 0,
+          fugaInterna: p.slide_2_analisis_forense?.resumen_consolidacion?.fuga_interna_mxn || 0,
           totalConciliado: p.slide_2_analisis_forense?.resumen_consolidacion?.total_conciliado_monto_mxn || 0,
           estadoInventario: p.slide_2_analisis_forense?.resumen_consolidacion?.estado_inventario_desc || ""
         },

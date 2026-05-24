@@ -243,6 +243,11 @@ export default function AuditProtocolPage() {
   const handleCreateProject = async () => {
     if (!newProject.name) return;
     
+    if (!user || !profile) {
+      alert("Debes iniciar sesión para poder crear proyectos y almacenar auditorías.");
+      return;
+    }
+
     // Deduct ERIS based on project size
     const cost = newProject.size === 'small' ? 15 : newProject.size === 'large' ? 45 : 30;
     const currentBalance = user?.user_metadata?.eris_balance ?? 100;
@@ -278,8 +283,10 @@ export default function AuditProtocolPage() {
 
     if (error) {
       console.error("Error creating project in Supabase:", error);
+      alert(`Error de base de datos (${error.code || '401'}): ${error.message}\nAsegúrate de haber iniciado sesión y tener permisos de escritura en la tabla 'audits'.`);
       return;
     }
+
 
     const project: Project = {
       id: data.id,
@@ -499,6 +506,15 @@ export default function AuditProtocolPage() {
           formData.append('aiModel',           activeProject.settings.aiModel || 'gemini-2.5-flash'); 
           formData.append('aiTemperature',     String(activeProject.settings.aiTemperature));
           formData.append('isTemporal',        String(activeProject.isTemporal));
+
+          // ── Attach actual File objects as fallback evidence ─────────────────
+          // If Supabase embeddings are empty (e.g. first run, ingest failed),
+          // the route.ts inline fallback will extract text directly from these files.
+          const projectActualFiles = actualFiles[activeProject.id] || [];
+          if (projectActualFiles.length > 0) {
+            addLog(`Adjuntando ${projectActualFiles.length} archivo(s) como respaldo...`, 'info');
+            projectActualFiles.forEach(f => formData.append('files', f));
+          }
 
           const response = await fetch(`/api/forensic?action=analyze`, {
             method: 'POST',

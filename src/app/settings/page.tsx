@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Target,
@@ -26,7 +26,7 @@ import {
   Mail
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
-import Image from "next/image";
+
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useDashboard } from "@/context/DashboardContext";
@@ -85,15 +85,93 @@ export default function SettingsPage() {
   // Logs
   const [logs, setLogs] = useState<any[]>([]);
 
+  // User Profile in Organization
+  const [userProfileData, setUserProfileData] = useState({
+    fullName: "",
+    role: ""
+  });
+  const [selectedTransferMember, setSelectedTransferMember] = useState("");
+
+  // Load data only ONCE when the component mounts
+  // We use a ref to prevent re-fetching every time profile/user context object changes
+  const hasFetchedRef = React.useRef(false);
+
   useEffect(() => {
-    if (profile || user) {
+    if (!hasFetchedRef.current && (profile || user)) {
+      hasFetchedRef.current = true;
       fetchInitialData();
     }
   }, [profile, user]);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `logo_${profile?.organization_id || Date.now()}_${Date.now()}.${fileExt}`;
+      const filePath = `logos/${fileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('logos')
+        .upload(filePath, file, { upsert: true });
+        
+      if (uploadError) {
+        setMessage({ type: 'error', text: 'Error al subir logo: ' + uploadError.message });
+        return;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('logos')
+        .getPublicUrl(filePath);
+
+      setOrgData(prev => ({ ...prev, logoUrl: publicUrl }));
+
+      // Persist to user metadata
+      await supabase.auth.updateUser({ data: { logoUrl: publicUrl } });
+      
+      if (profile?.organization_id) {
+          await supabase.from('organizations').update({ logo_url: publicUrl }).eq('id', profile.organization_id);
+      }
+      if (user?.id) {
+          await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
+      }
+
+      if (refreshProfile) await refreshProfile();
+
+      setMessage({ type: 'success', text: 'Logo actualizado' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: 'Error al procesar logo' });
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
+
   const fetchInitialData = async () => {
-    // Retrieve fallback metadata from onboarding
-    const meta = user?.user_metadata || {};
+    // Get a fresh session directly from Supabase (not from stale context)
+    const { data: { session } } = await supabase.auth.getSession();
+    const freshUser = session?.user ?? user;
+    const meta = freshUser?.user_metadata || {};
+
+    // Also fetch the profile fresh from DB using the session user id
+    let freshProfile = profile;
+    if (freshUser?.id) {
+      const { data: dbProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', freshUser.id)
+        .single();
+      if (dbProfile) freshProfile = dbProfile;
+    }
+
+    console.log('[Settings] fetchInitialData — profile.organization_id:', freshProfile?.organization_id);
+    console.log('[Settings] user_metadata:', meta);
+
+    // Set initial form state from metadata fallback
     setOrgData({
       name: meta.orgName || "",
       bio: meta.bio || "",
@@ -102,22 +180,33 @@ export default function SettingsPage() {
       annualRevenue: 0,
       goals: meta.goals || [],
       recoveryEmail: meta.recoveryEmail || "",
-      logoUrl: profile?.avatar_url || meta.logoBase64 || ""
+      logoUrl: freshProfile?.avatar_url || meta.logoUrl || meta.logoBase64 || ""
     });
 
     setAccountData({
-      fullName: meta.fullName || profile?.full_name || "",
-      email: user?.email || ""
+      fullName: meta.fullName || freshProfile?.full_name || "",
+      email: freshUser?.email || ""
     });
 
-    if (!profile?.organization_id) return;
+    setUserProfileData({
+      fullName: freshProfile?.full_name || meta.fullName || "",
+      role: freshProfile?.role || meta.role || "client"
+    });
+
+    const orgId = freshProfile?.organization_id;
+    if (!orgId) {
+      console.warn('[Settings] No organization_id on profile — cannot fetch org data from DB');
+      return;
+    }
     
-    // Fetch Org
-    const { data: org } = await supabase
+    // Fetch Org from DB
+    const { data: org, error: orgErr } = await supabase
       .from('organizations')
       .select('*')
-      .eq('id', profile.organization_id)
+      .eq('id', orgId)
       .single();
+    
+    console.log('[Settings] org from DB:', org, 'error:', orgErr?.message);
     
     if (org) {
       setOrgData({
@@ -128,7 +217,7 @@ export default function SettingsPage() {
         annualRevenue: org.annual_revenue || 0,
         goals: org.goals || meta.goals || [],
         recoveryEmail: org.recovery_email || meta.recoveryEmail || "",
-        logoUrl: org.logo_url || profile?.avatar_url || ""
+        logoUrl: org.logo_url || freshProfile?.avatar_url || ""
       });
       setErisBalance(org.eris_balance || 1000);
     }
@@ -137,7 +226,7 @@ export default function SettingsPage() {
     const { data: feat } = await supabase
       .from('organization_features')
       .select('*')
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', orgId)
       .single();
     if (feat) setFeatures(feat);
 
@@ -145,14 +234,14 @@ export default function SettingsPage() {
     const { data: team } = await supabase
       .from('team_members')
       .select('*')
-      .eq('organization_id', profile.organization_id);
+      .eq('organization_id', orgId);
     if (team) setTeamMembers(team);
 
     // Fetch Logs
     const { data: auditLogs } = await supabase
       .from('audit_logs')
       .select('*')
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', orgId)
       .order('created_at', { ascending: false })
       .limit(15);
     if (auditLogs) setLogs(auditLogs);
@@ -161,7 +250,12 @@ export default function SettingsPage() {
   const handleSaveOrg = async () => {
     setIsSaving(true);
     
-    // Update metadata as well for global availability
+    // Refresh session first to avoid stale token errors
+    try {
+      await supabase.auth.refreshSession();
+    } catch (_) {}
+
+    // Update auth metadata (non-critical — log if fails but don't block)
     const { error: metaError } = await supabase.auth.updateUser({
       data: {
         orgName: orgData.name,
@@ -172,46 +266,179 @@ export default function SettingsPage() {
         recoveryEmail: orgData.recoveryEmail
       }
     });
+    if (metaError) {
+      console.warn('[Settings] Auth metadata update warning (non-blocking):', metaError.message);
+    }
 
-    // Update table if available
-    const { error } = await supabase
-      .from('organizations')
-      .update({
-        name: orgData.name,
-        bio: orgData.bio,
-        sector: orgData.sector,
-        team_size: orgData.teamSize,
-        annual_revenue: orgData.annualRevenue,
-        goals: orgData.goals,
-        recovery_email: orgData.recoveryEmail
-      })
-      .eq('id', profile?.organization_id);
+    // Update organizations table (critical)
+    if (profile?.organization_id) {
+      const { error: dbError } = await supabase
+        .from('organizations')
+        .update({
+          name: orgData.name,
+          bio: orgData.bio,
+          sector: orgData.sector,
+          team_size: orgData.teamSize,
+          annual_revenue: orgData.annualRevenue,
+          goals: orgData.goals,
+          recovery_email: orgData.recoveryEmail
+        })
+        .eq('id', profile.organization_id);
+
+      if (dbError) {
+        console.error('[Settings] DB error saving org:', dbError.code, dbError.message, dbError.details);
+        setMessage({ type: "error", text: `Error DB: ${dbError.message}` });
+        setIsSaving(false);
+        return;
+      }
+    }
     
-    if (metaError && error) {
-      setMessage({ type: "error", text: "Error al guardar configuración" });
-    } else {
-      setMessage({ type: "success", text: "Configuración actualizada" });
-      // LOG: Config Change
-      await auditLogger.log('CONFIG_CHANGE', 'Configuración de organización actualizada', { 
-        orgName: orgData.name,
-        sector: orgData.sector
-      }, 'settings');
+    setMessage({ type: "success", text: "Configuración actualizada" });
+    await auditLogger.log('CONFIG_CHANGE', 'Configuración de organización actualizada', { 
+      orgName: orgData.name,
+      sector: orgData.sector
+    }, 'settings');
+    if (refreshProfile) await refreshProfile();
+    setIsSaving(false);
+  };
+
+  const handleSaveUserProfile = async () => {
+    if (!user?.id) return;
+    setIsSaving(true);
+
+    // Refresh session first
+    try {
+      await supabase.auth.refreshSession();
+    } catch (_) {}
+    
+    // 1. Update Profiles table (critical)
+    const { error: profileErr } = await supabase
+      .from('profiles')
+      .update({
+        full_name: userProfileData.fullName,
+        role: userProfileData.role
+      })
+      .eq('id', user.id);
+
+    if (profileErr) {
+      console.error('[Settings] DB error saving profile:', profileErr.code, profileErr.message, profileErr.details);
+      setMessage({ type: 'error', text: `Error perfil DB: ${profileErr.message}` });
+      setIsSaving(false);
+      return;
+    }
+
+    // 2. Update Auth user metadata (non-critical)
+    const { error: authErr } = await supabase.auth.updateUser({
+      data: {
+        fullName: userProfileData.fullName,
+        role: userProfileData.role
+      }
+    });
+    if (authErr) {
+      console.warn('[Settings] Auth metadata update warning (non-blocking):', authErr.message);
+    }
+
+    setMessage({ type: 'success', text: 'Perfil de usuario actualizado correctamente' });
+    await auditLogger.log('CONFIG_CHANGE', 'Perfil de usuario actualizado', {
+      fullName: userProfileData.fullName,
+      role: userProfileData.role
+    }, 'user');
+    if (refreshProfile) await refreshProfile();
+    setIsSaving(false);
+  };
+
+  const handleTransferAdmin = async () => {
+    if (!user || !profile || !selectedTransferMember) return;
+    
+    const confirmTransfer = confirm(
+      `¿Estás seguro de ceder el rol de administrador a ${selectedTransferMember}? Esta acción te degradará a rol de miembro y no podrás revertirla.`
+    );
+    if (!confirmTransfer) return;
+
+    setIsSaving(true);
+    try {
+      // 1. Find the target team member in team_members
+      const targetMember = teamMembers.find(m => m.email === selectedTransferMember);
+      if (!targetMember) {
+        setMessage({ type: "error", text: "El miembro seleccionado no existe en el equipo." });
+        setIsSaving(false);
+        return;
+      }
+
+      // 2. Update the target member's role to 'admin' in team_members
+      // This will trigger the trigger 'trg_sync_team_member_role' to update their profiles table
+      const { error: targetErr } = await supabase
+        .from('team_members')
+        .update({ role: 'admin' })
+        .eq('id', targetMember.id);
+
+      if (targetErr) {
+        console.error("Error updating target member role:", targetErr);
+        setMessage({ type: "error", text: "Error al ceder el rol en el equipo: " + targetErr.message });
+        setIsSaving(false);
+        return;
+      }
+
+      // 3. Demote current user:
+      // Change current user profile to 'client' (or 'member')
+      const { error: demoteProfileErr } = await supabase
+        .from('profiles')
+        .update({ role: 'client' })
+        .eq('id', user.id);
+
+      if (demoteProfileErr) {
+        console.error("Error demoting profile:", demoteProfileErr);
+      }
+
+      // 4. Update current user's team_member row if they have one
+      const currentUserMember = teamMembers.find(m => m.email === user.email);
+      if (currentUserMember) {
+        await supabase
+          .from('team_members')
+          .update({ role: 'member' })
+          .eq('id', currentUserMember.id);
+      }
+
+      // 5. Update Auth user metadata for the current user
+      await supabase.auth.updateUser({
+        data: { role: 'client' }
+      });
+
+      // LOG: Admin Transfer
+      await auditLogger.log('CONFIG_CHANGE', `Rol de Administrador cedido a ${selectedTransferMember}`, {
+        from: user.email,
+        to: selectedTransferMember
+      }, 'shield');
+
+      setMessage({ type: "success", text: `Rol de administrador cedido correctamente a ${selectedTransferMember}` });
+      setSelectedTransferMember("");
+      
+      // Refresh profile data
+      if (refreshProfile) await refreshProfile();
+      fetchInitialData();
+    } catch (err: any) {
+      console.error("Error transferring admin role:", err);
+      setMessage({ type: "error", text: "Error al ceder el rol de administrador" });
     }
     setIsSaving(false);
   };
 
   const handleSaveAccount = async () => {
     setIsSaving(true);
-    const { error } = await supabase.auth.updateUser({
-      data: {
-        fullName: accountData.fullName
-      }
+    // Update auth metadata
+    const { error: metaErr } = await supabase.auth.updateUser({
+      data: { fullName: accountData.fullName }
     });
+    // Also update the profiles table so Sidebar reads it from DB
+    const { error: profileErr } = await supabase
+      .from('profiles')
+      .update({ full_name: accountData.fullName })
+      .eq('id', user?.id);
 
-    if (error) {
-      setMessage({ type: "error", text: "Error al actualizar perfil" });
+    if (metaErr || profileErr) {
+      setMessage({ type: 'error', text: 'Error al actualizar perfil' });
     } else {
-      setMessage({ type: "success", text: "Perfil actualizado correctamente" });
+      setMessage({ type: 'success', text: 'Perfil actualizado correctamente' });
       if (refreshProfile) await refreshProfile();
     }
     setIsSaving(false);
@@ -341,14 +568,15 @@ export default function SettingsPage() {
                       {/* Logo Section */}
                       <div className="col-span-12 md:col-span-3 flex flex-col gap-4">
                         <label className="text-[10px] uppercase font-black tracking-widest text-gray-500">Logo de la Entidad</label>
-                        <div className="aspect-square border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center gap-4 bg-white/5 relative group cursor-pointer hover:border-erani-blue transition-all">
+                        <label className="aspect-square border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center gap-4 bg-white/5 relative group cursor-pointer hover:border-erani-blue transition-all overflow-hidden">
                           {orgData.logoUrl ? (
-                            <Image src={orgData.logoUrl} alt="Org Logo" width={200} height={200} className="object-contain p-6" />
+                            <img src={orgData.logoUrl} alt="Org Logo" className="w-full h-full object-contain p-6" />
                           ) : (
                             <Plus className="w-8 h-8 text-gray-700" />
                           )}
                           <div className="absolute bottom-4 text-[8px] uppercase font-black tracking-widest text-gray-600 opacity-0 group-hover:opacity-100">Click para subir</div>
-                        </div>
+                          <input type="file" accept="image/png,image/jpeg,image/svg+xml" className="sr-only" onChange={handleLogoUpload} />
+                        </label>
                       </div>
 
                       {/* Main Data */}
@@ -437,6 +665,92 @@ export default function SettingsPage() {
                       >
                         Finalizar y Continuar <ArrowRight className="w-4 h-4" />
                       </button>
+                    </div>
+
+                    <div className="w-full h-px bg-white/5 my-6" />
+
+                    {/* User Profile / Admin Settings Section */}
+                    <div className="flex flex-col gap-8">
+                      <div className="flex flex-col gap-2">
+                        <h3 className="text-xl font-black text-foreground uppercase tracking-tight">Mi Perfil en la Empresa</h3>
+                        <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Actualiza tu nombre y rol o transfiere el rol de administrador.</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-8">
+                         <div className="flex flex-col gap-3">
+                            <label className="text-[10px] uppercase font-black tracking-widest text-gray-500">Nombre Completo</label>
+                            <input 
+                              type="text" 
+                              value={userProfileData.fullName}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setUserProfileData(prev => ({ ...prev, fullName: val }));
+                                setAccountData(prev => ({ ...prev, fullName: val }));
+                              }}
+                              className="input-premium"
+                              placeholder="Tu nombre completo..."
+                            />
+                         </div>
+                         <div className="flex flex-col gap-3">
+                            <label className="text-[10px] uppercase font-black tracking-widest text-gray-500">Rol Operativo</label>
+                            <select 
+                              value={userProfileData.role}
+                              onChange={(e) => setUserProfileData({...userProfileData, role: e.target.value})}
+                              className="select-premium"
+                            >
+                              <option value="client">Cliente</option>
+                              <option value="admin">Administrador</option>
+                              <option value="dev">Desarrollador / Auditor</option>
+                            </select>
+                         </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={handleSaveUserProfile}
+                          className="button-premium px-10 py-5 rounded-2xl text-[10px] uppercase font-black tracking-widest flex items-center gap-3"
+                        >
+                          Actualizar Mi Perfil
+                        </button>
+                      </div>
+
+                      {/* Role ceding section (visible if the current user is admin/client and there are other team members) */}
+                      {(profile?.role === 'admin' || profile?.role === 'client') && teamMembers.some(member => member.email !== user?.email) && (
+                        <div className="flex flex-col gap-6 p-8 rounded-3xl bg-erani-coral/5 border border-erani-coral/10 mt-4">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-black text-erani-coral uppercase tracking-wider flex items-center gap-2">
+                              <Lock className="w-4 h-4" /> Ceder Rol de Administrador Principal
+                            </span>
+                            <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                              Transfiere la propiedad y el control de la organización a otro miembro del equipo.
+                            </span>
+                          </div>
+                          <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center">
+                            <select
+                              value={selectedTransferMember}
+                              onChange={(e) => setSelectedTransferMember(e.target.value)}
+                              className="select-premium flex-1"
+                            >
+                              <option value="">Selecciona un colaborador...</option>
+                              {teamMembers
+                                .filter(member => member.email !== user?.email)
+                                .map(member => (
+                                  <option key={member.id} value={member.email}>
+                                    {member.email} ({member.role})
+                                  </option>
+                                ))
+                              }
+                            </select>
+                            <button
+                              onClick={handleTransferAdmin}
+                              disabled={!selectedTransferMember || isSaving}
+                              className="bg-erani-coral hover:bg-erani-coral/80 text-white px-8 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                              Confirmar Cesión de Rol
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -661,7 +975,11 @@ export default function SettingsPage() {
                                <input 
                                  type="text"
                                  value={accountData.fullName}
-                                 onChange={(e) => setAccountData({ ...accountData, fullName: e.target.value })}
+                                 onChange={(e) => {
+                                   const val = e.target.value;
+                                   setAccountData(prev => ({ ...prev, fullName: val }));
+                                   setUserProfileData(prev => ({ ...prev, fullName: val }));
+                                 }}
                                  className="w-full bg-foreground/5 border border-glass-border p-4 rounded-xl text-sm font-bold text-foreground focus:border-erani-blue focus:outline-none transition-all"
                                  placeholder="Tu nombre"
                                />

@@ -3,17 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// In production browser environments, we prefer using the /api/supabase proxy
-// to keep all traffic under the same domain (platform.erani.mx) and avoid CORS.
-const clientUrl = (typeof window !== 'undefined' && process.env.NODE_ENV === 'production')
-  ? `${window.location.origin}/api/supabase`
-  : supabaseUrl;
+// In production browser environments, we previously used a proxy
+// but it causes 401 errors due to stripped headers or rewrite issues.
+// Supabase natively supports CORS so we can connect directly.
+const clientUrl = supabaseUrl;
 
 if (!supabaseUrl && typeof window !== 'undefined') {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_URL');
+  console.error('CRITICAL: Missing NEXT_PUBLIC_SUPABASE_URL environment variable. Connection to Supabase will fail.');
 }
 if (!supabaseAnonKey && typeof window !== 'undefined') {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  console.error('CRITICAL: Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable. Authentication with Supabase will fail.');
 }
 
 /**

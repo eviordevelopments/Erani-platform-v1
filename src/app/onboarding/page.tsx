@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Shield, 
@@ -56,7 +56,8 @@ export default function Onboarding() {
     annualRevenue: "",
     goals: [] as string[],
     recoveryEmail: "",
-    logoBase64: ""
+    logoBase64: "",
+    logoFile: null as File | null
   });
 
   const [teamEmails, setTeamEmails] = useState<string[]>([]);
@@ -100,15 +101,21 @@ export default function Onboarding() {
     setCheckedFiles(prev => prev.includes(file) ? prev.filter(f => f !== file) : [...prev, file]);
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, logoBase64: reader.result as string }));
+        setFormData(prev => ({ ...prev, logoBase64: reader.result as string, logoFile: file }));
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   const handleFinishConfig = async () => {
@@ -116,6 +123,24 @@ export default function Onboarding() {
     setIsSaving(true);
     
     try {
+      let finalLogoUrl = "";
+      if (formData.logoFile) {
+        const fileExt = formData.logoFile.name.split('.').pop();
+        const fileName = `logo_${Date.now()}.${fileExt}`;
+        const filePath = `logos/${fileName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('logos')
+          .upload(filePath, formData.logoFile, { upsert: true });
+          
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('logos')
+            .getPublicUrl(filePath);
+          finalLogoUrl = publicUrl;
+        }
+      }
+
       // 1. Create Organization record in database
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
@@ -123,7 +148,8 @@ export default function Onboarding() {
           name: formData.orgName,
           slug: formData.orgName.toLowerCase().replace(/\s+/g, '-') + '-' + Math.random().toString(36).substring(2, 7),
           trl_level: 1,
-          plan: 'trial'
+          plan: 'trial',
+          logo_url: finalLogoUrl || null
         })
         .select()
         .single();
@@ -141,7 +167,8 @@ export default function Onboarding() {
           organization_id: orgData.id,
           full_name: formData.fullName,
           email: user.email,
-          role: 'client'
+          role: 'client',
+          avatar_url: finalLogoUrl || null
         });
 
       if (profileError) {
@@ -164,11 +191,28 @@ export default function Onboarding() {
           recoveryEmail: formData.recoveryEmail,
           checkedFiles,
           teamEmails,
-          logoBase64: formData.logoBase64
+          logoUrl: finalLogoUrl || null
         }
       });
 
       if (authError) throw authError;
+
+      // 4. Insert team member rows for each invited email
+      if (teamEmails.length > 0) {
+        const teamRows = teamEmails.map((email) => ({
+          organization_id: orgData.id,
+          email,
+          status: 'pending',
+          role: 'member'
+        }));
+        const { error: teamError } = await supabase
+          .from('team_members')
+          .insert(teamRows);
+        if (teamError) {
+          // Non-blocking: log but don't fail the whole onboarding
+          console.warn("Could not insert team members:", teamError.message);
+        }
+      }
 
       // Refresh session and profile to ensure Context is updated
       await supabase.auth.refreshSession();
@@ -400,12 +444,12 @@ export default function Onboarding() {
                                ) : (
                                    <UploadCloud className="w-6 h-6 text-gray-400 group-hover:text-erani-blue transition-colors" />
                                )}
-                               <input type="file" accept="image/png, image/jpeg" className="hidden" onChange={handleImageUpload} />
+                               <input type="file" accept="image/png, image/jpeg" className="sr-only" onChange={handleImageUpload} />
                             </label>
                             <div className="flex flex-col gap-2">
                                 <label className="button-premium px-6 py-3 rounded-xl text-[10px] uppercase tracking-widest cursor-pointer text-center">
                                     Subir Logotipo
-                                    <input type="file" accept="image/png, image/jpeg" className="hidden" onChange={handleImageUpload} />
+                                    <input type="file" accept="image/png, image/jpeg" className="sr-only" onChange={handleImageUpload} />
                                 </label>
                                 <span className="text-[9px] uppercase font-bold text-gray-500 tracking-widest">PNG, JPG hasta 5MB</span>
                             </div>

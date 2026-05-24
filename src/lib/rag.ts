@@ -13,13 +13,13 @@ import PDFParser from "pdf2json";
 
 // ── Gemini client (server-side only) ───────────────────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-// Using gemini-embedding-001 as it's verified available in your list
+// gemini-embedding-001: VERIFIED 3072-dimensional output (NOT 768)
 const embeddingModel = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const MAX_CHUNK_CHARS  = 1000;  // Characters per chunk (safe for embedding API)
-const MAX_EMBED_BATCH  = 100;   // Max chunks per batch (Gemini limit)
-const EMBEDDING_DIMS   = 768;   // Standard dimension for gemini-embedding-001
+const MAX_EMBED_BATCH  = 5;     // Reduced batch size to avoid rate limits (3072-dim is heavy)
+const EMBEDDING_DIMS   = 3072;  // Actual dimension for gemini-embedding-001 (verified via API test)
 
 /**
  * Utility to parse PDF using pdf2json with a Promise
@@ -144,15 +144,37 @@ export function chunkText(parsedFile: ParsedFile): TextChunk[] {
   if (!text.trim()) return [];
 
   const chunks: string[] = [];
-  // Split on sentence boundaries, newlines, or tab-delimited rows
-  const sentences = text.split(/(?<=[.!?\n\t])\s+/);
+  // Fix: split by newlines, tabs, or sentence boundaries followed by space
+  const sentences = text.split(/(?<=[.!?])\s+|[\n\t]+/);
 
   let current = "";
   for (const sentence of sentences) {
+    if (!sentence.trim()) continue;
+
+    // If a single sentence/block is larger than max limit, force split it
+    if (sentence.length > MAX_CHUNK_CHARS) {
+      if (current.trim()) {
+        chunks.push(current.trim());
+        current = "";
+      }
+      let remaining = sentence;
+      while (remaining.length > 0) {
+        const part = remaining.substring(0, MAX_CHUNK_CHARS);
+        chunks.push(part.trim());
+        remaining = remaining.substring(MAX_CHUNK_CHARS - 100); // 100 char overlap
+        // Prevent infinite loop if remaining is too small to progress
+        if (remaining.length <= 100) {
+          if (remaining.trim()) chunks.push(remaining.trim());
+          break;
+        }
+      }
+      continue;
+    }
+
     const candidate = current ? `${current} ${sentence}` : sentence;
 
     if (candidate.length > MAX_CHUNK_CHARS) {
-      if (current) chunks.push(current.trim());
+      if (current.trim()) chunks.push(current.trim());
       // Overlap: carry last ~100 chars as context for next chunk
       current = current.slice(-100) + " " + sentence;
     } else {
@@ -183,7 +205,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     taskType: TaskType.RETRIEVAL_DOCUMENT,
   });
   const values = result.embedding.values;
-  return values.length > 768 ? values.slice(0, 768) : values;
+  // DO NOT truncate — gemini-embedding-001 returns exactly 3072 dims.
+  // Supabase vector(3072) column must match. Truncation causes corrupt embeddings.
+  return values;
 }
 
 /**
