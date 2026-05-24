@@ -62,7 +62,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const refreshProfile = async () => {
-    if (user) await fetchProfile(user.id);
+    if (!user) return;
+
+    const { data: { user: refreshedUser }, error: userError } = await supabase.auth.getUser();
+    if (!userError && refreshedUser) {
+      setUser(refreshedUser);
+    }
+
+    await fetchProfile(user.id);
   };
 
   const updateErisBalance = async (newBalance: number) => {

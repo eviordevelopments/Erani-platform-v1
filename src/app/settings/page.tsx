@@ -191,6 +191,7 @@ export default function SettingsPage() {
       setMessage({ type: "error", text: "Error al guardar configuración" });
     } else {
       setMessage({ type: "success", text: "Configuración actualizada" });
+      if (refreshProfile) await refreshProfile();
       // LOG: Config Change
       await auditLogger.log('CONFIG_CHANGE', 'Configuración de organización actualizada', { 
         orgName: orgData.name,
@@ -202,18 +203,32 @@ export default function SettingsPage() {
 
   const handleSaveAccount = async () => {
     setIsSaving(true);
-    const { error } = await supabase.auth.updateUser({
+
+    const { error: authError } = await supabase.auth.updateUser({
       data: {
         fullName: accountData.fullName
       }
     });
 
-    if (error) {
+    let profileError = null;
+    if (user?.id) {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          full_name: accountData.fullName,
+          email: accountData.email
+        }, { onConflict: 'id' });
+      profileError = error;
+    }
+
+    if (authError || profileError) {
       setMessage({ type: "error", text: "Error al actualizar perfil" });
     } else {
       setMessage({ type: "success", text: "Perfil actualizado correctamente" });
       if (refreshProfile) await refreshProfile();
     }
+
     setIsSaving(false);
   };
 
