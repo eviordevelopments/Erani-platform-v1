@@ -23,7 +23,10 @@ import {
   Bell,
   Share2,
   User,
-  Mail
+  Mail,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 
@@ -67,8 +70,10 @@ export default function SettingsPage() {
   // Team
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("");
+  const [inviteProfileType, setInviteProfileType] = useState<"admin" | "member">("member");
 
-  // Features
+  // Features — stored directly on organizations table
   const [features, setFeatures] = useState({
     firewall_enabled: true,
     email_alerts: true,
@@ -92,16 +97,58 @@ export default function SettingsPage() {
   });
   const [selectedTransferMember, setSelectedTransferMember] = useState("");
 
-  // Load data only ONCE when the component mounts
-  // We use a ref to prevent re-fetching every time profile/user context object changes
-  const hasFetchedRef = React.useRef(false);
+  // Password change form
+  const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" });
+  const [pwShow, setPwShow] = useState({ current: false, next: false, confirm: false });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const handleChangePassword = async () => {
+    if (pwForm.next !== pwForm.confirm) {
+      setPwMsg({ type: "error", text: "Las contraseñas nuevas no coinciden." });
+      return;
+    }
+    if (pwForm.next.length < 6) {
+      setPwMsg({ type: "error", text: "La contraseña debe tener al menos 6 caracteres." });
+      return;
+    }
+    setPwSaving(true);
+    setPwMsg(null);
+    try {
+      // Re-authenticate first with current password
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser?.email) throw new Error("No se pudo obtener el usuario.");
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: currentUser.email,
+        password: pwForm.current,
+      });
+      if (signInErr) {
+        setPwMsg({ type: "error", text: "Contraseña actual incorrecta." });
+        setPwSaving(false);
+        return;
+      }
+      const { error: updateErr } = await supabase.auth.updateUser({ password: pwForm.next });
+      if (updateErr) throw updateErr;
+      setPwMsg({ type: "success", text: "Contraseña actualizada correctamente." });
+      setPwForm({ current: "", next: "", confirm: "" });
+    } catch (err: any) {
+      setPwMsg({ type: "error", text: err.message || "Error al actualizar contraseña." });
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
+  // Track which user ID we've already fetched for, so we re-fetch if the
+  // user changes (e.g. after login) but don't re-fetch on every render.
+  const fetchedForRef = React.useRef<string | null>(null);
 
   useEffect(() => {
-    if (!hasFetchedRef.current && (profile || user)) {
-      hasFetchedRef.current = true;
+    const uid = user?.id ?? null;
+    if (uid && uid !== fetchedForRef.current) {
+      fetchedForRef.current = uid;
       fetchInitialData();
     }
-  }, [profile, user]);
+  }, [user?.id, profile?.organization_id]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -129,9 +176,6 @@ export default function SettingsPage() {
 
       setOrgData(prev => ({ ...prev, logoUrl: publicUrl }));
 
-      // Persist to user metadata
-      await supabase.auth.updateUser({ data: { logoUrl: publicUrl } });
-      
       if (profile?.organization_id) {
           await supabase.from('organizations').update({ logo_url: publicUrl }).eq('id', profile.organization_id);
       }
@@ -155,9 +199,8 @@ export default function SettingsPage() {
     // Get a fresh session directly from Supabase (not from stale context)
     const { data: { session } } = await supabase.auth.getSession();
     const freshUser = session?.user ?? user;
-    const meta = freshUser?.user_metadata || {};
 
-    // Also fetch the profile fresh from DB using the session user id
+    // Fetch the profile fresh from DB using the session user id
     let freshProfile = profile;
     if (freshUser?.id) {
       const { data: dbProfile } = await supabase
@@ -169,28 +212,16 @@ export default function SettingsPage() {
     }
 
     console.log('[Settings] fetchInitialData — profile.organization_id:', freshProfile?.organization_id);
-    console.log('[Settings] user_metadata:', meta);
 
-    // Set initial form state from metadata fallback
-    setOrgData({
-      name: meta.orgName || "",
-      bio: meta.bio || "",
-      sector: meta.sector || "",
-      teamSize: meta.teamSize || "1-10",
-      annualRevenue: 0,
-      goals: meta.goals || [],
-      recoveryEmail: meta.recoveryEmail || "",
-      logoUrl: freshProfile?.avatar_url || meta.logoUrl || meta.logoBase64 || ""
-    });
-
+    // Set initial form state from profile
     setAccountData({
-      fullName: meta.fullName || freshProfile?.full_name || "",
+      fullName: freshProfile?.full_name || "",
       email: freshUser?.email || ""
     });
 
     setUserProfileData({
-      fullName: freshProfile?.full_name || meta.fullName || "",
-      role: freshProfile?.role || meta.role || "client"
+      fullName: freshProfile?.full_name || "",
+      role: freshProfile?.role || ""
     });
 
     const orgId = freshProfile?.organization_id;
@@ -210,29 +241,30 @@ export default function SettingsPage() {
     
     if (org) {
       setOrgData({
-        name: org.name || meta.orgName || "",
-        bio: org.bio || meta.bio || "",
-        sector: org.sector || meta.sector || "",
-        teamSize: org.team_size || meta.teamSize || "1-10",
+        name: org.name || "",
+        bio: org.bio || "",
+        sector: org.sector || "",
+        teamSize: org.team_size || "1-10",
         annualRevenue: org.annual_revenue || 0,
-        goals: org.goals || meta.goals || [],
-        recoveryEmail: org.recovery_email || meta.recoveryEmail || "",
+        goals: org.goals || [],
+        recoveryEmail: org.recovery_email || "",
         logoUrl: org.logo_url || freshProfile?.avatar_url || ""
       });
       setErisBalance(org.eris_balance || 1000);
+
+      // Read feature flags directly from organizations table
+      setFeatures({
+        firewall_enabled: org.firewall_enabled ?? true,
+        email_alerts: org.email_alerts ?? true,
+        slack_alerts: org.slack_alerts ?? false,
+        auto_audit: org.auto_audit ?? false,
+        streaming_logs_enabled: org.streaming_logs_enabled ?? true,
+      });
     }
 
-    // Fetch Features
-    const { data: feat } = await supabase
-      .from('organization_features')
-      .select('*')
-      .eq('organization_id', orgId)
-      .single();
-    if (feat) setFeatures(feat);
-
-    // Fetch Team
+    // Fetch Team from org_members
     const { data: team } = await supabase
-      .from('team_members')
+      .from('org_members')
       .select('*')
       .eq('organization_id', orgId);
     if (team) setTeamMembers(team);
@@ -249,28 +281,8 @@ export default function SettingsPage() {
 
   const handleSaveOrg = async () => {
     setIsSaving(true);
-    
-    // Refresh session first to avoid stale token errors
-    try {
-      await supabase.auth.refreshSession();
-    } catch (_) {}
 
-    // Update auth metadata (non-critical — log if fails but don't block)
-    const { error: metaError } = await supabase.auth.updateUser({
-      data: {
-        orgName: orgData.name,
-        bio: orgData.bio,
-        sector: orgData.sector,
-        teamSize: orgData.teamSize,
-        goals: orgData.goals,
-        recoveryEmail: orgData.recoveryEmail
-      }
-    });
-    if (metaError) {
-      console.warn('[Settings] Auth metadata update warning (non-blocking):', metaError.message);
-    }
-
-    // Update organizations table (critical)
+    // Write to organizations table (source of truth)
     if (profile?.organization_id) {
       const { error: dbError } = await supabase
         .from('organizations')
@@ -279,24 +291,28 @@ export default function SettingsPage() {
           bio: orgData.bio,
           sector: orgData.sector,
           team_size: orgData.teamSize,
-          annual_revenue: orgData.annualRevenue,
+          annual_revenue: orgData.annualRevenue || 0,
           goals: orgData.goals,
-          recovery_email: orgData.recoveryEmail
+          recovery_email: orgData.recoveryEmail,
         })
         .eq('id', profile.organization_id);
 
       if (dbError) {
-        console.error('[Settings] DB error saving org:', dbError.code, dbError.message, dbError.details);
-        setMessage({ type: "error", text: `Error DB: ${dbError.message}` });
+        console.error('[Settings] DB error saving org:', dbError.code, dbError.message);
+        setMessage({ type: "error", text: `Error al guardar: ${dbError.message}` });
         setIsSaving(false);
         return;
       }
+    } else {
+      setMessage({ type: "error", text: "No se encontró organización vinculada a tu perfil." });
+      setIsSaving(false);
+      return;
     }
-    
+
     setMessage({ type: "success", text: "Configuración actualizada" });
-    await auditLogger.log('CONFIG_CHANGE', 'Configuración de organización actualizada', { 
+    await auditLogger.log('CONFIG_CHANGE', 'Configuración de organización actualizada', {
       orgName: orgData.name,
-      sector: orgData.sector
+      sector: orgData.sector,
     }, 'settings');
     if (refreshProfile) await refreshProfile();
     setIsSaving(false);
@@ -306,42 +322,25 @@ export default function SettingsPage() {
     if (!user?.id) return;
     setIsSaving(true);
 
-    // Refresh session first
-    try {
-      await supabase.auth.refreshSession();
-    } catch (_) {}
-    
-    // 1. Update Profiles table (critical)
     const { error: profileErr } = await supabase
       .from('profiles')
       .update({
         full_name: userProfileData.fullName,
-        role: userProfileData.role
+        role: userProfileData.role,
       })
       .eq('id', user.id);
 
     if (profileErr) {
-      console.error('[Settings] DB error saving profile:', profileErr.code, profileErr.message, profileErr.details);
-      setMessage({ type: 'error', text: `Error perfil DB: ${profileErr.message}` });
+      console.error('[Settings] DB error saving profile:', profileErr.message);
+      setMessage({ type: 'error', text: `Error al guardar perfil: ${profileErr.message}` });
       setIsSaving(false);
       return;
     }
 
-    // 2. Update Auth user metadata (non-critical)
-    const { error: authErr } = await supabase.auth.updateUser({
-      data: {
-        fullName: userProfileData.fullName,
-        role: userProfileData.role
-      }
-    });
-    if (authErr) {
-      console.warn('[Settings] Auth metadata update warning (non-blocking):', authErr.message);
-    }
-
-    setMessage({ type: 'success', text: 'Perfil de usuario actualizado correctamente' });
+    setMessage({ type: 'success', text: 'Perfil actualizado correctamente' });
     await auditLogger.log('CONFIG_CHANGE', 'Perfil de usuario actualizado', {
       fullName: userProfileData.fullName,
-      role: userProfileData.role
+      role: userProfileData.role,
     }, 'user');
     if (refreshProfile) await refreshProfile();
     setIsSaving(false);
@@ -349,7 +348,7 @@ export default function SettingsPage() {
 
   const handleTransferAdmin = async () => {
     if (!user || !profile || !selectedTransferMember) return;
-    
+
     const confirmTransfer = confirm(
       `¿Estás seguro de ceder el rol de administrador a ${selectedTransferMember}? Esta acción te degradará a rol de miembro y no podrás revertirla.`
     );
@@ -357,7 +356,6 @@ export default function SettingsPage() {
 
     setIsSaving(true);
     try {
-      // 1. Find the target team member in team_members
       const targetMember = teamMembers.find(m => m.email === selectedTransferMember);
       if (!targetMember) {
         setMessage({ type: "error", text: "El miembro seleccionado no existe en el equipo." });
@@ -365,55 +363,34 @@ export default function SettingsPage() {
         return;
       }
 
-      // 2. Update the target member's role to 'admin' in team_members
-      // This will trigger the trigger 'trg_sync_team_member_role' to update their profiles table
+      // Update target member's profile_type in org_members
       const { error: targetErr } = await supabase
-        .from('team_members')
-        .update({ role: 'admin' })
+        .from('org_members')
+        .update({ profile_type: 'admin' })
         .eq('id', targetMember.id);
 
       if (targetErr) {
-        console.error("Error updating target member role:", targetErr);
-        setMessage({ type: "error", text: "Error al ceder el rol en el equipo: " + targetErr.message });
+        setMessage({ type: "error", text: "Error al ceder el rol: " + targetErr.message });
         setIsSaving(false);
         return;
       }
 
-      // 3. Demote current user:
-      // Change current user profile to 'client' (or 'member')
-      const { error: demoteProfileErr } = await supabase
-        .from('profiles')
-        .update({ role: 'client' })
-        .eq('id', user.id);
+      // Downgrade current user in profiles
+      await supabase.from('profiles').update({ profile_type: 'member' }).eq('id', user.id);
 
-      if (demoteProfileErr) {
-        console.error("Error demoting profile:", demoteProfileErr);
-      }
-
-      // 4. Update current user's team_member row if they have one
+      // Downgrade current user in org_members
       const currentUserMember = teamMembers.find(m => m.email === user.email);
       if (currentUserMember) {
-        await supabase
-          .from('team_members')
-          .update({ role: 'member' })
-          .eq('id', currentUserMember.id);
+        await supabase.from('org_members').update({ profile_type: 'member' }).eq('id', currentUserMember.id);
       }
 
-      // 5. Update Auth user metadata for the current user
-      await supabase.auth.updateUser({
-        data: { role: 'client' }
-      });
-
-      // LOG: Admin Transfer
       await auditLogger.log('CONFIG_CHANGE', `Rol de Administrador cedido a ${selectedTransferMember}`, {
         from: user.email,
         to: selectedTransferMember
       }, 'shield');
 
-      setMessage({ type: "success", text: `Rol de administrador cedido correctamente a ${selectedTransferMember}` });
+      setMessage({ type: "success", text: `Rol cedido correctamente a ${selectedTransferMember}` });
       setSelectedTransferMember("");
-      
-      // Refresh profile data
       if (refreshProfile) await refreshProfile();
       fetchInitialData();
     } catch (err: any) {
@@ -424,23 +401,21 @@ export default function SettingsPage() {
   };
 
   const handleSaveAccount = async () => {
+    if (!user?.id) return;
     setIsSaving(true);
-    // Update auth metadata
-    const { error: metaErr } = await supabase.auth.updateUser({
-      data: { fullName: accountData.fullName }
-    });
-    // Also update the profiles table so Sidebar reads it from DB
+
     const { error: profileErr } = await supabase
       .from('profiles')
       .update({ full_name: accountData.fullName })
-      .eq('id', user?.id);
+      .eq('id', user.id);
 
-    if (metaErr || profileErr) {
+    if (profileErr) {
       setMessage({ type: 'error', text: 'Error al actualizar perfil' });
     } else {
       setMessage({ type: 'success', text: 'Perfil actualizado correctamente' });
       if (refreshProfile) await refreshProfile();
     }
+
     setIsSaving(false);
   };
 
@@ -448,12 +423,12 @@ export default function SettingsPage() {
     const newVal = !features[key];
     setFeatures(prev => ({ ...prev, [key]: newVal }));
     
-    await supabase
-      .from('organization_features')
-      .upsert({
-        organization_id: profile?.organization_id,
-        [key]: newVal
-      });
+    if (profile?.organization_id) {
+      await supabase
+        .from('organizations')
+        .update({ [key]: newVal })
+        .eq('id', profile.organization_id);
+    }
 
     // LOG: Feature Toggle
     await auditLogger.log('CONFIG_CHANGE', `Feature ${key} ${newVal ? 'activada' : 'desactivada'}`, {
@@ -463,20 +438,51 @@ export default function SettingsPage() {
   };
 
   const handleSendInvite = async () => {
-    if (!inviteEmail) return;
-    const { error } = await supabase
-      .from('team_members')
-      .insert({
-        organization_id: profile?.organization_id,
-        email: inviteEmail,
-        status: 'pending'
+    if (!inviteEmail || !profile?.organization_id) return;
+
+    // Check max_members limit before inserting
+    const { data: orgCheck } = await supabase
+      .from('organizations')
+      .select('max_members')
+      .eq('id', profile.organization_id)
+      .single();
+
+    const { count: currentCount } = await supabase
+      .from('org_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', profile.organization_id);
+
+    const maxMembers = orgCheck?.max_members ?? 5;
+    if ((currentCount ?? 0) >= maxMembers) {
+      setMessage({
+        type: "error",
+        text: `Tu plan incluye hasta ${maxMembers} miembros por organización, incluyendo administradores.`
       });
-    
-    if (!error) {
-      setInviteEmail("");
-      fetchInitialData();
-      setMessage({ type: "success", text: "Invitación enviada" });
+      return;
     }
+
+    const res = await fetch('/api/auth/org', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'invite_members',
+        organization_id: profile.organization_id,
+        members: [{ email: inviteEmail, profile_type: inviteProfileType, role: inviteRole || null }]
+      })
+    });
+
+    const json = await res.json();
+
+    if (!res.ok) {
+      setMessage({ type: "error", text: json.error || "Error al enviar invitación" });
+      return;
+    }
+
+    setInviteEmail("");
+    setInviteRole("");
+    setInviteProfileType("member");
+    fetchInitialData();
+    setMessage({ type: "success", text: "Invitación enviada" });
   };
 
   const handleGenerateReferral = () => {
@@ -635,9 +641,10 @@ export default function SettingsPage() {
                           <label className="text-[10px] uppercase font-black tracking-widest text-gray-500">Facturación Anual (MXN)</label>
                           <input 
                             type="number" 
-                            value={orgData.annualRevenue}
-                            onChange={(e) => setOrgData({...orgData, annualRevenue: parseFloat(e.target.value)})}
+                            value={orgData.annualRevenue === 0 ? "" : orgData.annualRevenue}
+                            onChange={(e) => setOrgData({...orgData, annualRevenue: e.target.value === "" ? 0 : parseFloat(e.target.value) || 0})}
                             className="input-premium"
+                            placeholder="0"
                           />
                        </div>
                        <div className="flex flex-col gap-3">
@@ -763,20 +770,37 @@ export default function SettingsPage() {
                           <h3 className="text-xl font-black text-foreground uppercase tracking-tight">Gestión de Colaboradores</h3>
                           <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Invita a tu equipo para centralizar la auditoría.</p>
                        </div>
-                       <div className="flex items-center gap-3">
-                          <input 
-                            type="email" 
-                            placeholder="Email del colaborador..."
-                            value={inviteEmail}
-                            onChange={(e) => setInviteEmail(e.target.value)}
-                            className="input-premium"
-                          />
-                          <button 
-                            onClick={handleSendInvite}
-                            className="bg-erani-blue p-3 rounded-xl hover:scale-105 transition-all text-white"
-                          >
-                            <Send className="w-5 h-5" />
-                          </button>
+                       <div className="flex flex-col gap-3">
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="email" 
+                              placeholder="Email del colaborador..."
+                              value={inviteEmail}
+                              onChange={(e) => setInviteEmail(e.target.value)}
+                              className="input-premium"
+                            />
+                            <select
+                              value={inviteProfileType}
+                              onChange={(e) => setInviteProfileType(e.target.value as "admin" | "member")}
+                              className="select-premium"
+                            >
+                              <option value="member">Miembro</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                            <input
+                              type="text"
+                              placeholder="Rol (ej. Marketing Lead)..."
+                              value={inviteRole}
+                              onChange={(e) => setInviteRole(e.target.value)}
+                              className="input-premium"
+                            />
+                            <button 
+                              onClick={handleSendInvite}
+                              className="bg-erani-blue p-3 rounded-xl hover:scale-105 transition-all text-white"
+                            >
+                              <Send className="w-5 h-5" />
+                            </button>
+                          </div>
                        </div>
                     </div>
 
@@ -789,14 +813,14 @@ export default function SettingsPage() {
                                </div>
                                <div className="flex flex-col">
                                   <span className="text-sm font-bold text-foreground">{member.email}</span>
-                                  <span className="text-[9px] uppercase font-black text-gray-600 tracking-widest">{member.role}</span>
+                                  <span className="text-[9px] uppercase font-black text-gray-600 tracking-widest">{member.role || member.profile_type}</span>
                                </div>
                             </div>
                             <div className="flex items-center gap-8">
                                <span className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${
-                                 member.status === 'active' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'
+                                 member.verified ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'
                                }`}>
-                                 {member.status}
+                                 {member.verified ? 'verificado' : 'pendiente'}
                                </span>
                                <button className="text-gray-700 hover:text-erani-coral transition-colors">
                                   <Trash2 className="w-4 h-4" />
@@ -1002,15 +1026,115 @@ export default function SettingsPage() {
                      </div>
                      
                      <div className="pt-10 border-t border-white/5 flex flex-col gap-6">
-                        <h4 className="text-sm font-black text-foreground uppercase tracking-widest">Control de Acceso</h4>
-                        <button className="bg-foreground/5 border border-glass-border p-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] text-foreground hover:bg-foreground/10 transition-all text-left flex justify-between items-center group">
-                           Actualizar Contraseña Maestra
-                           <Lock className="w-4 h-4 text-nav-text group-hover:text-foreground transition-all" />
-                        </button>
-                        <button className="p-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] text-erani-coral hover:bg-erani-coral/10 transition-all text-left">
-                           Eliminar Cuenta de Organización
-                        </button>
-                     </div>
+                         <h4 className="text-sm font-black text-foreground uppercase tracking-widest flex items-center gap-2">
+                           <KeyRound className="w-4 h-4 text-erani-purple" />
+                           Actualizar Contraseña
+                         </h4>
+
+                         {/* Password change form */}
+                         <div className="flex flex-col gap-4 p-6 rounded-2xl bg-foreground/5 border border-glass-border">
+                           {/* Current */}
+                           <div className="flex flex-col gap-2">
+                             <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Contraseña Actual</label>
+                             <div className="relative">
+                               <input
+                                 type={pwShow.current ? "text" : "password"}
+                                 value={pwForm.current}
+                                 onChange={(e) => setPwForm(p => ({ ...p, current: e.target.value }))}
+                                 placeholder="Tu contraseña actual"
+                                 className="w-full bg-background border border-glass-border p-4 pr-12 rounded-xl text-sm font-bold text-foreground focus:border-erani-blue focus:outline-none transition-all"
+                               />
+                               <button
+                                 type="button"
+                                 onClick={() => setPwShow(s => ({ ...s, current: !s.current }))}
+                                 className="absolute right-4 top-1/2 -translate-y-1/2 text-nav-text hover:text-erani-blue transition-colors"
+                                 aria-label={pwShow.current ? "Ocultar" : "Mostrar"}
+                                 tabIndex={-1}
+                               >
+                                 {pwShow.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                               </button>
+                             </div>
+                           </div>
+
+                           {/* New */}
+                           <div className="flex flex-col gap-2">
+                             <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Nueva Contraseña</label>
+                             <div className="relative">
+                               <input
+                                 type={pwShow.next ? "text" : "password"}
+                                 value={pwForm.next}
+                                 onChange={(e) => setPwForm(p => ({ ...p, next: e.target.value }))}
+                                 placeholder="Mínimo 6 caracteres"
+                                 className="w-full bg-background border border-glass-border p-4 pr-12 rounded-xl text-sm font-bold text-foreground focus:border-erani-blue focus:outline-none transition-all"
+                               />
+                               <button
+                                 type="button"
+                                 onClick={() => setPwShow(s => ({ ...s, next: !s.next }))}
+                                 className="absolute right-4 top-1/2 -translate-y-1/2 text-nav-text hover:text-erani-blue transition-colors"
+                                 aria-label={pwShow.next ? "Ocultar" : "Mostrar"}
+                                 tabIndex={-1}
+                               >
+                                 {pwShow.next ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                               </button>
+                             </div>
+                           </div>
+
+                           {/* Confirm */}
+                           <div className="flex flex-col gap-2">
+                             <label className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Confirmar Contraseña</label>
+                             <div className="relative">
+                               <input
+                                 type={pwShow.confirm ? "text" : "password"}
+                                 value={pwForm.confirm}
+                                 onChange={(e) => setPwForm(p => ({ ...p, confirm: e.target.value }))}
+                                 placeholder="Repite la nueva contraseña"
+                                 className={`w-full bg-background border p-4 pr-12 rounded-xl text-sm font-bold text-foreground focus:outline-none transition-all ${
+                                   pwForm.confirm && pwForm.next !== pwForm.confirm
+                                     ? "border-erani-coral/60 focus:border-erani-coral"
+                                     : "border-glass-border focus:border-erani-blue"
+                                 }`}
+                               />
+                               <button
+                                 type="button"
+                                 onClick={() => setPwShow(s => ({ ...s, confirm: !s.confirm }))}
+                                 className="absolute right-4 top-1/2 -translate-y-1/2 text-nav-text hover:text-erani-blue transition-colors"
+                                 aria-label={pwShow.confirm ? "Ocultar" : "Mostrar"}
+                                 tabIndex={-1}
+                               >
+                                 {pwShow.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                               </button>
+                             </div>
+                             {pwForm.confirm && pwForm.next !== pwForm.confirm && (
+                               <p className="text-[10px] text-erani-coral font-bold">Las contraseñas no coinciden.</p>
+                             )}
+                           </div>
+
+                           {/* Feedback */}
+                           {pwMsg && (
+                             <div className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest p-3 rounded-xl border ${
+                               pwMsg.type === "success"
+                                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+                                 : "bg-erani-coral/10 border-erani-coral/20 text-erani-coral"
+                             }`}>
+                               {pwMsg.type === "success" ? <Check className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                               {pwMsg.text}
+                             </div>
+                           )}
+
+                           <button
+                             onClick={handleChangePassword}
+                             disabled={pwSaving || !pwForm.current || !pwForm.next || !pwForm.confirm}
+                             className="button-premium px-8 py-3 rounded-xl text-[10px] uppercase font-black tracking-widest flex items-center gap-2 self-start disabled:opacity-40 disabled:cursor-not-allowed"
+                           >
+                             {pwSaving ? "Actualizando..." : "Actualizar Contraseña"}
+                             <Lock className="w-3 h-3" />
+                           </button>
+                         </div>
+
+                         <button className="p-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] text-erani-coral hover:bg-erani-coral/10 transition-all text-left">
+                            Eliminar Cuenta de Organización
+                         </button>
+                      </div>
                   </div>
                 )}
 

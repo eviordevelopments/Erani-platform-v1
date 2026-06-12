@@ -9,14 +9,28 @@ export interface Profile {
   id: string;
   organization_id: string | null;
   full_name: string | null;
-  email: string | null;
-  role: string;
+  display_name: string | null;
+  email: string;
+  profile_type: 'admin' | 'member';
+  role: string | null;
+  bio: string | null;
   avatar_url: string | null;
+  password_set: boolean;
+  onboarding_completed: boolean;
+  eris_balance: number;
+}
+
+export interface OrgData {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  plan: string;
 }
 
 interface AuthContextType {
   user: User | null;
   profile: Profile | null;
+  org: OrgData | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -26,6 +40,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
+  org: null,
   loading: true,
   signOut: async () => {},
   refreshProfile: async () => {},
@@ -35,54 +50,97 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [org, setOrg] = useState<OrgData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string, retries = 3) => {
+const fetchProfile = async (userId: string, retries = 3, passedToken?: string) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (!error && data) {
-        setProfile(data as Profile);
-      } else if (error && retries > 0) {
-        console.warn(`Retrying profile fetch... (${retries} left)`, error.message);
-        await new Promise(r => setTimeout(r, 1000));
-        return fetchProfile(userId, retries - 1);
+      // Use passed token if available (e.g. right after signUp), else get from session
+      let token = passedToken
+      if (!token) {
+        const { data: { session } } = await supabase.auth.getSession()
+        token = session?.access_token
+      }
+      if (!token) {
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, 1000))
+          return fetchProfile(userId, retries - 1)
+        }
+        setProfile(null)
+        return
+      }
+
+      // Fetch via server route — uses supabaseAdmin scoped to this user's JWT
+      const res = await fetch('/api/profile', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (res.ok) {
+        const { profile: data, org: orgData } = await res.json()
+        setProfile(data)
+        if (orgData) setOrg(orgData)
+        else setOrg(null)
+      } else if (res.status === 404) {
+        // Profile doesn't exist yet (e.g. just signed up, profile being created)
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, 1000))
+          return fetchProfile(userId, retries - 1)
+        }
+        setProfile(null)
+      } else {
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, 1000))
+          return fetchProfile(userId, retries - 1)
+        }
+        console.error('Profile fetch failed:', await res.text())
+        setProfile(null)
       }
     } catch (err) {
       if (retries > 0) {
-        await new Promise(r => setTimeout(r, 1000));
-        return fetchProfile(userId, retries - 1);
+        await new Promise(r => setTimeout(r, 1000))
+        return fetchProfile(userId, retries - 1)
       }
-      console.error("Profile fetch failed after retries:", err);
+      console.error('Profile fetch failed after retries:', err)
+      setProfile(null)
     }
-  };
+  }
 
   const refreshProfile = async () => {
-    if (user) {
-      await fetchProfile(user.id);
-      const { data } = await supabase.auth.refreshSession();
-      if (data.session?.user) {
-        setUser(data.session.user);
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return
+
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 6000)
+      const res = await fetch('/api/profile', {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+      if (res.ok) {
+        const { profile: data, org: orgData } = await res.json()
+        setUser(session.user)
+        setProfile(data)
+        if (orgData) setOrg(orgData)
+        else setOrg(null)
       }
+    } catch (err) {
+      console.warn('refreshProfile failed:', err)
     }
-  };
+  }
 
   const updateErisBalance = async (newBalance: number) => {
     if (!user) return;
     try {
-      const { data: { user: updatedUser }, error } = await supabase.auth.updateUser({
-        data: { eris_balance: newBalance }
-      });
-      
+      const { error } = await supabase
+        .from('profiles')
+        .update({ eris_balance: newBalance })
+        .eq('id', user.id);
+
       if (error) throw error;
-      
-      if (updatedUser) {
-        setUser(updatedUser);
-      }
+
+      await refreshProfile();
     } catch (error: any) {
       console.error("Failed to update ERIS balance:", error.message);
       if (error.message === 'Failed to fetch') {
@@ -92,23 +150,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    // Check initial session
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const currentUser = session?.user ?? null;
-      
+
       if (currentUser) {
-        // Initialize ERIS balance if it doesn't exist
-        if (currentUser.user_metadata?.eris_balance === undefined) {
-          const { data: { user: updatedUser } } = await supabase.auth.updateUser({
-            data: { eris_balance: 100 }
-          });
-          setUser(updatedUser ?? currentUser);
-        } else {
-          setUser(currentUser);
+        if (session && typeof window !== 'undefined') {
+          document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${session.expires_in || 3600}; SameSite=Lax; Secure`;
         }
+        setUser(currentUser);
         await fetchProfile(currentUser.id);
       } else {
+        if (typeof window !== 'undefined') {
+          document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
+        }
         setUser(null);
       }
       setLoading(false);
@@ -116,16 +171,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     checkSession();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
+        if (session && typeof window !== 'undefined') {
+          document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${session.expires_in || 3600}; SameSite=Lax; Secure`;
+        }
         await fetchProfile(session.user.id);
         if (event === 'SIGNED_IN') {
           await auditLogger.log('LOGIN', 'Sesión iniciada correctamente', {}, 'log-in');
         }
       } else {
+        if (typeof window !== 'undefined') {
+          document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
+        }
         setProfile(null);
+        setOrg(null);
       }
       setLoading(false);
     });
@@ -136,11 +197,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signOut = async () => {
     await auditLogger.log('LOGOUT', 'Sesión cerrada por el usuario', {}, 'log-out');
     await supabase.auth.signOut();
+    if (typeof window !== 'undefined') {
+      document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
+    }
+    setUser(null);
     setProfile(null);
+    setOrg(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile, updateErisBalance }}>
+    <AuthContext.Provider value={{ user, profile, org, loading, signOut, refreshProfile, updateErisBalance }}>
       {children}
     </AuthContext.Provider>
   );
