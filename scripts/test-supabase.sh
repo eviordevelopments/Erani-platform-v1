@@ -4,9 +4,9 @@
 # Run from the project root: chmod +x scripts/test-supabase.sh && ./scripts/test-supabase.sh
 # =============================================================
 
-SUPABASE_URL="https://ctgizovelvkzahbmxwgc.supabase.co"
-ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0Z2l6b3ZlbHZremFoYm14d2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3MDQxNjksImV4cCI6MjA5MDI4MDE2OX0.zUkl-YvvJDwBoaWr3ewd0PmLsQvREnWvGiFjfWOucVM"
-SERVICE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0Z2l6b3ZlbHZremFoYm14d2djIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDcwNDE2OSwiZXhwIjoyMDkwMjgwMTY5fQ.T0FAdEayZB41uwa557BSCfxaaQhxHvSwWSqi00gNUyg"
+SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-https://ctgizovelvkzahbmxwgc.supabase.co}"
+ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+SERVICE_KEY="${SUPABASE_SERVICE_ROLE_KEY}"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
