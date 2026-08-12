@@ -28,12 +28,12 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
       <div className="flex justify-between items-center mb-12 px-8">
          <div className="flex flex-col gap-1 z-10">
              <span className="text-[10px] uppercase font-black text-nav-text tracking-[0.2em]">{first.name}</span>
-             <span className="text-3xl font-black text-foreground">${first.value.toLocaleString()} USD</span>
+             <span className="text-3xl font-black text-foreground">${first.value.toLocaleString()}</span>
          </div>
          <div className="flex flex-col gap-1 items-end z-10">
              <span className="text-[10px] uppercase font-black text-erani-blue tracking-[0.2em]">{last.name}</span>
              <span className="text-3xl font-black text-erani-blue">
-               {last.recovered > 0 ? `+` : ""}${last.value.toLocaleString()} USD
+               {last.recovered > 0 ? `+` : ""}${last.value.toLocaleString()}
              </span>
          </div>
       </div>

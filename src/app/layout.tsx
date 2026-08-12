@@ -23,6 +23,8 @@ export const metadata: Metadata = {
 };
 
 import IdleTimer from "@/components/IdleTimer";
+import SupportWidget from "@/components/SupportWidget";
+import FeedbackWidget from "@/components/FeedbackWidget";
 
 export default function RootLayout({
   children,
@@ -45,6 +47,8 @@ export default function RootLayout({
               <div className="bg-blob-purple w-[400px] h-[400px] top-1/2 left-1/3 opacity-[0.05]" />
               
               {children}
+              <SupportWidget />
+              <FeedbackWidget />
             </DashboardProvider>
           </AuthProvider>
         </ThemeProvider>

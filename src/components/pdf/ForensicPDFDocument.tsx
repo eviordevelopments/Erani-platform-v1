@@ -1,5 +1,5 @@
 import React from 'react';
-import { Page, Text, View, Document, StyleSheet, Font, Image, Svg, Rect, Path, Circle } from '@react-pdf/renderer';
+import { Page, Text, View, Document, StyleSheet, Font, Image, Svg, Rect, Path, Circle, Link } from '@react-pdf/renderer';
 import type { ForensicReportData } from '@/app/forensic/page';
 
 // Registro de fuentes Montserrat con URLs robustas
@@ -31,7 +31,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     color: colors.text,
     fontFamily: 'Montserrat',
-    padding: 30,
+    paddingTop: 30,
+    paddingLeft: 30,
+    paddingRight: 30,
+    paddingBottom: 85, // Add enough bottom padding to avoid overlapping with footer
     flexDirection: 'column',
   },
   header: {
@@ -270,27 +273,48 @@ const formatCurrency = (val: number) => {
 
 // --- Main Document ---
 
-export default function ForensicPDFDocument({ data }: { data: ForensicReportData }) {
+export default function ForensicPDFDocument({ data, org, reportId }: { data: ForensicReportData, org?: any, reportId?: string | null }) {
+  const isBeta = org?.plan?.toLowerCase().includes('beta') || org?.paid_subscription;
+  const logoUrl = isBeta && org?.logo_url ? org.logo_url : null;
+
   const Header = () => (
     <View style={styles.header} fixed>
       <View style={styles.logoSection}>
-        {/* Placeholder for Logo - in a real app, use Image with base64 or absolute URL */}
-        <View style={{ width: 30, height: 30, backgroundColor: colors.accent, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: colors.background, fontSize: 14, fontWeight: 900 }}>E</Text>
-        </View>
-        <Text style={styles.eraniLogo}>ERANI</Text>
+        {logoUrl ? (
+          <Image src={logoUrl} style={{ height: 30, width: 'auto', objectFit: 'contain' }} />
+        ) : (
+          <Image src={typeof window !== 'undefined' ? `${window.location.origin}/eanilogo.png` : '/eanilogo.png'} style={{ height: 30, width: 'auto', objectFit: 'contain' }} />
+        )}
       </View>
       <View style={styles.headerInfo}>
-        <Text style={styles.projectName}>{data.projectName}</Text>
-        <Text style={styles.reportType}>Audit Protocol v2.4</Text>
+        <Text style={styles.projectName}>{data.projectName || "PROYECTO SIN NOMBRE"}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={styles.reportType}>Audit Protocol v2.4 {reportId ? `| ID: ${reportId}` : ''} | {new Date().toLocaleDateString('es-MX')} | </Text>
+          <Svg viewBox="0 0 24 24" width="8" height="8" style={{ marginLeft: 4, marginRight: 2 }}>
+            <Path d="M12 2L2 7l10 15 10-15L12 2z" fill="#E2B75A" />
+          </Svg>
+          <Text style={[styles.reportType, { color: '#E2B75A', fontWeight: 900, marginBottom: 0 }]}>
+             {data.erisCost ? `${data.erisCost.toFixed(1)} ERIS` : "30.0 ERIS"}
+          </Text>
+        </View>
       </View>
     </View>
   );
 
   const Footer = () => (
     <View style={styles.footer} fixed>
-      <Text style={styles.footerText}>Profitability Firewall | High-Fidelity Forensic Analytics</Text>
-      <Text style={styles.footerText} render={({ pageNumber, totalPages }) => `Documento Confidencial | Slide ${pageNumber} de ${totalPages}`} />
+      <View style={{ flexDirection: 'column', gap: 4, width: '70%' }}>
+        <Text style={{ fontSize: 7, color: colors.blue, fontWeight: 900, textTransform: 'uppercase' }}>
+          <Link src="https://erani.mx" style={{ color: colors.blue, textDecoration: 'none' }}>erani.mx</Link> | Soporte: contacto@erani.mx
+        </Text>
+        <Text style={{ fontSize: 6, color: colors.textMuted, opacity: 0.7, lineHeight: 1.3 }}>
+          CONFIDENCIALIDAD: Este documento ha sido generado por el Motor de Inferencia Erani bajo protocolos de Soberanía de Datos. 
+          Erani opera procesando únicamente vectores de metadata cifrados y no almacena información en texto claro. Prohibida su distribución no autorizada.
+        </Text>
+      </View>
+      <View style={{ alignItems: 'flex-end', justifyContent: 'flex-end', width: '30%' }}>
+        <Text style={styles.footerText} render={({ pageNumber, totalPages }) => `Documento Confidencial | Slide ${pageNumber} de ${totalPages}`} />
+      </View>
     </View>
   );
 
@@ -298,7 +322,7 @@ export default function ForensicPDFDocument({ data }: { data: ForensicReportData
     <Document title={`ERANI_FORENSIC_${data.projectName}`} author="ERANI Intelligence">
       
       {/* Slide 1: Executive Scorecard */}
-      <Page size="A4" orientation="landscape" style={styles.page}>
+      <Page size="A4" orientation="landscape" style={styles.page} wrap={false}>
         <Header />
         <View style={styles.content}>
           <Text style={styles.slideTitle}>Executive Scorecard</Text>
@@ -343,7 +367,7 @@ export default function ForensicPDFDocument({ data }: { data: ForensicReportData
       </Page>
 
       {/* Slide 2: Forensic Analysis */}
-      <Page size="A4" orientation="landscape" style={styles.page}>
+      <Page size="A4" orientation="landscape" style={styles.page} wrap={false}>
         <Header />
         <View style={styles.content}>
           <Text style={styles.slideTitle}>Forensic Analysis</Text>
@@ -390,7 +414,7 @@ export default function ForensicPDFDocument({ data }: { data: ForensicReportData
       </Page>
 
       {/* Slide 3: Operational Health */}
-      <Page size="A4" orientation="landscape" style={styles.page}>
+      <Page size="A4" orientation="landscape" style={styles.page} wrap={false}>
         <Header />
         <View style={styles.content}>
           <Text style={styles.slideTitle}>Operational Health</Text>
@@ -445,7 +469,7 @@ export default function ForensicPDFDocument({ data }: { data: ForensicReportData
       </Page>
 
       {/* Slide 4: Firewall Strategy */}
-      <Page size="A4" orientation="landscape" style={styles.page}>
+      <Page size="A4" orientation="landscape" style={styles.page} wrap={false}>
         <Header />
         <View style={styles.content}>
           <Text style={styles.slideTitle}>Profitability Firewall</Text>
@@ -484,8 +508,9 @@ export default function ForensicPDFDocument({ data }: { data: ForensicReportData
       </Page>
 
       {/* Slide 5: Technical Annex */}
-      <Page size="A4" orientation="landscape" style={styles.page}>
-        <Header />
+      {(data.anexoFrameworks.length > 0 || data.anexoGlosario.length > 0) && (
+        <Page size="A4" orientation="landscape" style={styles.page} wrap={false}>
+          <Header />
         <View style={styles.content}>
           <Text style={styles.slideTitle}>Technical Annex</Text>
           <Text style={styles.slideSubtitle}>Sustento Metodológico y Glosario</Text>
@@ -522,8 +547,8 @@ export default function ForensicPDFDocument({ data }: { data: ForensicReportData
             </Text>
           </View>
         </View>
-        <Footer />
-      </Page>
+        </Page>
+      )}
 
     </Document>
   );

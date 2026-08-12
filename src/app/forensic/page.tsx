@@ -24,20 +24,10 @@ import Sidebar from "@/components/Sidebar";
 import ReportDownloader from "@/components/ReportDownloader";
 import { useDashboard } from "@/context/DashboardContext";
 import { supabase } from "@/lib/supabaseClient";
-import { 
-  ResponsiveContainer, 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  PieChart, 
-  Pie, 
-  Cell 
-} from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { persistForensicReport } from "@/lib/forensicPersistence";
 import { useAuth } from "@/context/AuthContext";
+import ForensicHistoryDashboard from "@/components/ForensicHistoryDashboard";
 
 
 // --- Types ---
@@ -94,7 +84,7 @@ const INITIAL_DATA: ForensicReportData = {
     fugaExterna: 0,
     fugaInterna: 0,
     totalConciliado: 0,
-    estadoInventario: "Esperando análisis de Gemini..."
+    estadoInventario: "Esperando análisis de Erani Engine..."
   },
   cegueraOperativa: "Análisis en proceso...",
   firewallProtocolos: "Pendiente de definición estratégica.",
@@ -133,7 +123,7 @@ export default function ForensicPage() {
 
 function ForensicContent() {
   const { isSidebarCollapsed } = useDashboard();
-  const { user, profile } = useAuth();
+  const { user, profile, org } = useAuth();
   const searchParams = useSearchParams();
   const reportId = searchParams.get("id");
   const timestamp = searchParams.get("t");
@@ -143,12 +133,19 @@ function ForensicContent() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("Iniciando...");
+  const [viewMode, setViewMode] = useState<"history" | "report">("report");
 
   const organizationId = profile?.organization_id;
 
   useEffect(() => {
     if (user && profile) {
-      fetchForensicData();
+      if (reportId) {
+        setViewMode("report");
+        fetchForensicData();
+      } else {
+        setViewMode("history");
+        setLoading(false);
+      }
     }
   }, [reportId, timestamp, user, profile]);
 
@@ -157,25 +154,21 @@ function ForensicContent() {
       console.log(`[Hydration] Starting fetch for reportId: ${reportId}, attempt: ${5 - retries}`);
       setLoading(true);
       setFetchError(null);
-      setStatusMessage(`Consultando Supabase (Intento ${5 - retries}/5)...`);
+      setStatusMessage(`Cargando reporte forense...`);
 
       let query = supabase.from('forensic_reports').select('*');
 
       if (reportId) {
         // Fallback logic: Try ID first, then project_id if ID looks like a custom slug
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reportId);
         const isNumeric = /^\d+$/.test(reportId);
 
-        if (isUuid || isNumeric) {
+        if (isNumeric) {
           console.log(`[Hydration] Searching by Primary Key (id): ${reportId}`);
           query = query.eq('id', reportId);
         } else {
           console.log(`[Hydration] Searching by Project Identifier (project_id): ${reportId}`);
           query = query.eq('project_id', reportId);
         }
-      } else {
-        console.log(`[Hydration] No ID provided, fetching latest report`);
-        query = query.order('created_at', { ascending: false }).limit(1);
       }
 
       const { data: result, error } = await query.single();
@@ -314,12 +307,23 @@ function ForensicContent() {
     { id: "firewall", label: "Firewall / Blindaje", icon: Lock },
     { id: "annex", label: "Anexo Técnico", icon: FileText },
   ];
+  
+  if (viewMode === "history") {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex">
+        <Sidebar />
+        <main className={`flex-1 transition-all duration-500 overflow-y-auto ${isSidebarCollapsed ? "ml-[104px]" : "ml-[296px]"} relative flex flex-col h-screen overflow-x-hidden`}>
+          <ForensicHistoryDashboard organizationId={organizationId || null} />
+        </main>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
-      <div className="flex flex-col h-screen bg-background overflow-hidden">
+      <div className="min-h-screen bg-background text-foreground flex">
         <Sidebar />
-        <main className={`flex-1 transition-all duration-500 flex flex-col items-center justify-center gap-6 ${isSidebarCollapsed ? "ml-20" : "ml-64"}`}>
+        <main className={`flex-1 transition-all duration-500 flex flex-col items-center justify-center gap-6 p-4 md:p-8 ${isSidebarCollapsed ? "ml-[104px]" : "ml-[296px]"} relative h-screen overflow-x-hidden`}>
           <div className="relative">
             <div className="w-20 h-20 border-2 border-erani-blue/10 border-t-erani-blue rounded-full animate-spin" />
             <div className="absolute inset-0 flex items-center justify-center">
@@ -327,16 +331,16 @@ function ForensicContent() {
             </div>
           </div>
           <div className="text-center space-y-2">
-            <h2 className="text-xl font-black uppercase tracking-[0.2em] text-white">Sincronizando Reporte</h2>
+            <h2 className="text-xl font-black uppercase tracking-[0.2em] text-black dark:text-white">Sincronizando Reporte</h2>
             <p className="text-[10px] text-erani-blue font-bold uppercase tracking-widest animate-pulse">{statusMessage}</p>
-            <p className="text-[9px] text-gray-600 uppercase tracking-widest mt-2">ID: {reportId || "Último disponible"}</p>
+            <p className="text-[9px] text-slate-600 dark:text-gray-600 uppercase tracking-widest mt-2">ID: {reportId || "Último disponible"}</p>
           </div>
           
           <button 
             onClick={() => setLoading(false)}
             className="mt-8 text-[8px] text-gray-600 uppercase tracking-[0.3em] hover:text-white transition-colors"
           >
-            Saltar Espera (Modo Debug)
+            Saltar Espera
           </button>
         </main>
       </div>
@@ -345,9 +349,9 @@ function ForensicContent() {
 
   if (fetchError) {
     return (
-      <div className="flex flex-col h-screen bg-background overflow-hidden">
+      <div className="min-h-screen bg-background text-foreground flex">
         <Sidebar />
-        <main className={`flex-1 transition-all duration-500 flex flex-col items-center justify-center p-8 ${isSidebarCollapsed ? "ml-20" : "ml-64"}`}>
+        <main className={`flex-1 transition-all duration-500 flex flex-col items-center justify-center p-4 md:p-8 ${isSidebarCollapsed ? "ml-[104px]" : "ml-[296px]"} relative h-screen overflow-x-hidden`}>
           <div className="max-w-md w-full bg-[#0d0d0d] border border-red-900/30 p-8 rounded-2xl text-center space-y-6">
             <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
               <ShieldAlert className="w-8 h-8 text-red-500" />
@@ -372,7 +376,7 @@ function ForensicContent() {
     <div className="min-h-screen bg-background text-foreground flex">
       <Sidebar />
 
-      <main className={`flex-1 transition-all duration-300 ${isSidebarCollapsed ? "ml-[112px]" : "ml-[312px]"} p-10 lg:p-14 relative overflow-x-hidden`}>
+      <main className={`flex-1 transition-all duration-500 overflow-y-auto p-4 md:p-8 ${isSidebarCollapsed ? "ml-[104px]" : "ml-[296px]"} relative flex flex-col h-screen overflow-x-hidden`}>
         {/* Background Gradients */}
         <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-erani-blue/10 blur-[150px] rounded-full pointer-events-none -z-10" />
         <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-[#9e80ff]/10 blur-[120px] rounded-full pointer-events-none -z-10" />
@@ -416,7 +420,7 @@ function ForensicContent() {
                      </div>
                    </div>
 
-                    <ReportDownloader data={data} />
+                    <ReportDownloader data={data} org={org} reportId={reportId} />
                  </div>
             </div>
 
@@ -493,25 +497,58 @@ function ForensicContent() {
                  </button>
                </motion.div>
              ) : (
-               <motion.div
-                 key={activeTab}
-                 initial={{ opacity: 0, y: 20 }}
-                 animate={{ opacity: 1, y: 0 }}
-                 exit={{ opacity: 0, y: -20 }}
-                 transition={{ duration: 0.3, ease: "easeOut" }}
-               >
-                 <div id="forensic-scorecard-grid">
-                    {activeTab === "scorecard" && <ScoreCardTab data={data} />}
-                    {activeTab === "analysis" && <AnalysisTab tickets={data.tickets} data={data} />}
-                    {activeTab === "kpis" && <HealthKpisTab data={data} />}
-                    {activeTab === "firewall" && <FirewallTab data={data} />}
-                    {activeTab === "annex" && <AnnexTab data={data} />}
+               <>
+                 {/* WEB VIEW (Hidden on Print) */}
+                 <motion.div
+                   key={activeTab}
+                   initial={{ opacity: 0, y: 20 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   exit={{ opacity: 0, y: -20 }}
+                   transition={{ duration: 0.3, ease: "easeOut" }}
+                   className="print:hidden"
+                 >
+                   <div id="forensic-scorecard-grid">
+                      {activeTab === "scorecard" && <ScoreCardTab data={data} />}
+                      {activeTab === "analysis" && <AnalysisTab tickets={data.tickets} data={data} />}
+                      {activeTab === "kpis" && <HealthKpisTab data={data} />}
+                      {activeTab === "firewall" && <FirewallTab data={data} />}
+                      {activeTab === "annex" && <AnnexTab data={data} />}
+                   </div>
+                 </motion.div>
+
+                 {/* PRINT VIEW (Hidden on Web) */}
+                 <div className="hidden print:flex flex-col w-full">
+                    <div className="flex flex-col gap-8 w-full break-inside-avoid">
+                       <PrintHeader org={org} data={data} reportId={reportId} />
+                       <ScoreCardTab data={data} />
+                    </div>
+                    <div className="h-12" />
+                    <div className="flex flex-col gap-8 w-full break-inside-avoid break-before-page">
+                       <PrintHeader org={org} data={data} reportId={reportId} />
+                       <AnalysisTab tickets={data.tickets} data={data} />
+                    </div>
+                    <div className="h-12" />
+                    <div className="flex flex-col gap-8 w-full break-inside-avoid break-before-page">
+                       <PrintHeader org={org} data={data} reportId={reportId} />
+                       <HealthKpisTab data={data} />
+                    </div>
+                    <div className="h-12" />
+                    <div className="flex flex-col gap-8 w-full break-inside-avoid break-before-page">
+                       <PrintHeader org={org} data={data} reportId={reportId} />
+                       <FirewallTab data={data} />
+                    </div>
+                    <div className="h-12" />
+                    <div className="flex flex-col gap-8 w-full break-inside-avoid break-before-page">
+                       <PrintHeader org={org} data={data} reportId={reportId} />
+                       <AnnexTab data={data} />
+                       <PrintFooter />
+                    </div>
                  </div>
-               </motion.div>
+               </>
              )}
           </AnimatePresence>
 
-          <footer className="mt-12 flex justify-between items-center opacity-30 text-[9px] uppercase font-bold tracking-[0.3em] text-gray-400">
+          <footer className="mt-12 flex justify-between items-center opacity-30 text-[9px] uppercase font-bold tracking-[0.3em] text-gray-400 print:hidden">
              <span>Profitability Firewall | Industrial Grade Forensic Audit</span>
              <span>*Cálculo basado en el Modelo Forense de Nivel 2, diseñado bajo marcos de eficiencia operativa B2B.</span>
           </footer>
@@ -679,15 +716,15 @@ function AnalysisTab({ tickets, data }: { tickets: ForensicTicket[], data: Foren
              </thead>
              <tbody className="divide-y divide-white/5">
                 {tickets.length > 0 ? tickets.map((ticket, i) => (
-                   <tr key={ticket.id} className="group hover:bg-white/5 transition-colors">
+                   <tr key={`${ticket.id}-${i}`} className="group hover:bg-white/5 transition-colors">
                       <td className="px-8 py-5">
                          <span className="px-3 py-1.5 rounded-lg bg-erani-coral/10 text-erani-coral text-[10px] font-mono font-bold border border-erani-coral/20">
                            {ticket.id}
                          </span>
                       </td>
-                      <td className="px-8 py-5 text-sm font-bold text-gray-300">{ticket.description}</td>
-                      <td className="px-8 py-5 text-xs font-mono text-gray-500">[{ticket.filter}]</td>
-                      <td className="px-8 py-5 text-sm font-bold text-gray-300 text-right">{ticket.hrs}</td>
+                      <td className="px-8 py-5 text-sm font-bold text-slate-800 dark:text-gray-300">{ticket.description}</td>
+                      <td className="px-8 py-5 text-xs font-mono text-slate-600 dark:text-gray-500">[{ticket.filter}]</td>
+                      <td className="px-8 py-5 text-sm font-bold text-slate-800 dark:text-gray-300 text-right">{ticket.hrs}</td>
                       <td className="px-8 py-5 text-sm font-bold text-erani-coral text-right">
                         <AnimatedNumber value={ticket.cost} prefix="$" suffix=".00" />
                       </td>
@@ -695,17 +732,17 @@ function AnalysisTab({ tickets, data }: { tickets: ForensicTicket[], data: Foren
                 )) : (
                   <tr>
                     <td colSpan={5} className="px-8 py-20 text-center text-xs uppercase font-black tracking-widest text-gray-600 opacity-50">
-                       Esperando Hidratación de Datos de Gemini...
+                       Esperando Hidratación de Datos de Erani Engine...
                     </td>
                   </tr>
                 )}
              </tbody>
              {tickets.length > 0 && (
-                <tfoot className="bg-white/5 border-t border-white/10">
+                <tfoot className="bg-foreground/5 border-t border-glass-border">
                    <tr className="font-black">
-                      <td className="px-8 py-6 text-[10px] uppercase tracking-[0.3em] text-white">Total</td>
-                      <td colSpan={2} className="px-8 py-6 text-[10px] uppercase tracking-[0.3em] text-gray-500 text-center">Total Conciliado</td>
-                      <td className="px-8 py-6 text-sm text-gray-300 text-right">
+                      <td className="px-8 py-6 text-[10px] uppercase tracking-[0.3em] text-black dark:text-white">Total</td>
+                      <td colSpan={2} className="px-8 py-6 text-[10px] uppercase tracking-[0.3em] text-slate-600 dark:text-gray-500 text-center">Total Conciliado</td>
+                      <td className="px-8 py-6 text-sm text-slate-800 dark:text-gray-300 text-right">
                         <AnimatedNumber value={tickets.reduce((acc, t) => acc + t.hrs, 0)} decimals={1} />
                       </td>
                       <td className="px-8 py-6 text-lg text-erani-coral text-right">
@@ -747,10 +784,10 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
           {/* Loop Monitor */}
           <div className="col-span-12 md:col-span-4 glassmorphism p-8 rounded-[2.5rem] border border-glass-border flex flex-col gap-8">
              <div className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase font-black tracking-widest text-gray-300">Monitor de Bucle de Revisiones</span>
+                <span className="text-[10px] uppercase font-black tracking-widest text-slate-700 dark:text-gray-300">Monitor de Bucle de Revisiones</span>
              </div>
              <div className="flex items-center justify-center relative py-8">
-                <div className="text-4xl font-black text-white">
+                <div className="text-4xl font-black text-black dark:text-white">
                   <AnimatedNumber value={data.kpiRevisiones} suffix="%" />
                 </div>
                 <div className="absolute inset-0 flex items-center justify-center opacity-20">
@@ -770,9 +807,9 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
           {/* Talent Friction & Dark Data */}
           <div className="col-span-12 md:col-span-8 flex flex-col gap-6">
              <div className="glassmorphism p-8 rounded-[2.5rem] border border-white/5 grid grid-cols-2 gap-12">
-                <div className="flex flex-col gap-6 border-r border-white/5 pr-12">
-                   <span className="text-[10px] uppercase font-black tracking-widest text-gray-300">Índice de Fricción de Talento</span>
-                   <div className="text-4xl font-black text-white">
+                <div className="flex flex-col gap-6 border-r border-glass-border pr-12">
+                   <span className="text-[10px] uppercase font-black tracking-widest text-slate-700 dark:text-gray-300">Índice de Fricción de Talento</span>
+                   <div className="text-4xl font-black text-black dark:text-white">
                       <AnimatedNumber value={data.kpiFriccionTalento} suffix="%" />
                    </div>
                    <div className="w-full bg-white/5 h-2 rounded-full relative overflow-hidden">
@@ -790,8 +827,8 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
                 <div className="flex flex-col gap-6">
                    <div className="flex justify-between items-start">
                       <div className="flex flex-col gap-6">
-                        <span className="text-[10px] uppercase font-black tracking-widest text-gray-300">Índice de Datos Oscuros (Dark Data Index)</span>
-                        <div className="text-4xl font-black text-white">
+                        <span className="text-[10px] uppercase font-black tracking-widest text-slate-700 dark:text-gray-300">Índice de Datos Oscuros (Dark Data Index)</span>
+                        <div className="text-4xl font-black text-black dark:text-white">
                           <AnimatedNumber value={data.kpiDarkData} suffix="%" />
                         </div>
                       </div>
@@ -809,13 +846,13 @@ function HealthKpisTab({ data }: { data: ForensicReportData }) {
 
              <div className="glassmorphism p-8 rounded-[2.5rem] border border-white/5 flex items-center justify-between">
                 <div className="flex flex-col gap-2 max-w-md">
-                   <span className="text-[10px] uppercase font-black tracking-widest text-gray-300">Intensidad de Scope Creep</span>
-                   <p className="text-[9px] font-medium text-gray-600 leading-relaxed">
+                   <span className="text-[10px] uppercase font-black tracking-widest text-slate-700 dark:text-gray-300">Intensidad de Scope Creep</span>
+                   <p className="text-[9px] font-medium text-slate-600 dark:text-gray-600 leading-relaxed">
                      Desviación presupuestal por solicitudes fuera de SOW.
                    </p>
                 </div>
                 <div className="flex items-center gap-6">
-                   <span className="text-3xl font-black text-white">
+                   <span className="text-3xl font-black text-black dark:text-white">
                       <AnimatedNumber value={data.scopeCreep} suffix="%" />
                    </span>
                    <div className="w-32 h-10 relative">
@@ -839,8 +876,8 @@ function FirewallTab({ data }: { data: ForensicReportData }) {
   return (
     <div className="flex flex-col gap-10">
        <div className="flex flex-col gap-2">
-          <h3 className="text-3xl font-black uppercase text-white tracking-tight">El Firewall</h3>
-          <p className="text-xs uppercase font-bold tracking-widest text-gray-500">Recomendaciones del Sistema</p>
+          <h3 className="text-2xl font-black uppercase text-black dark:text-white tracking-tight">El Firewall</h3>
+          <p className="text-xs uppercase font-bold tracking-widest text-slate-600 dark:text-gray-500">Recomendaciones del Sistema</p>
        </div>
 
        <div className="grid grid-cols-2 gap-8">
@@ -965,10 +1002,59 @@ function AnnexTab({ data }: { data: ForensicReportData }) {
              <span className="text-xs uppercase font-black tracking-[0.5em] text-gray-500">Anexo Técnico Detallado</span>
              <p className="text-[10px] font-bold text-gray-600">Exportación de Metadata Cruda para Auditoría Externa</p>
           </div>
-          <button className="px-8 py-4 rounded-xl border border-dashed border-white/10 text-[10px] font-black uppercase tracking-widest hover:border-white/30 transition-all">
+          <button 
+             onClick={() => window.print()}
+             className="px-8 py-4 rounded-xl border border-dashed border-white/10 text-[10px] font-black uppercase tracking-widest hover:border-white/30 transition-all"
+          >
              Generar PDF de Evidencia
           </button>
        </div>
+    </div>
+  );
+}
+
+// --- Print Components ---
+
+function PrintHeader({ org, data, reportId }: { org: any, data: ForensicReportData, reportId: string | null }) {
+  const isBeta = org?.plan?.toLowerCase().includes('beta') || org?.paid_subscription;
+  const logoUrl = isBeta && org?.logo_url ? org.logo_url : null;
+
+  return (
+    <div className="flex justify-between items-start pb-6 mb-8 border-b border-gray-200 dark:border-white/10 break-inside-avoid w-full">
+       <div className="flex flex-col gap-2">
+          {logoUrl ? (
+             <img src={logoUrl} alt="Logo" className="h-10 object-contain" />
+          ) : (
+             <div className="flex items-center gap-3">
+                <ShieldAlert className="w-8 h-8 text-erani-purple" />
+                <span className="text-xl font-black tracking-widest uppercase">ERANI ENGINE</span>
+             </div>
+          )}
+          <h2 className="text-lg font-black uppercase mt-4 text-foreground">{data.projectName}</h2>
+          {reportId && <span className="text-[9px] uppercase font-bold text-gray-500">ID Reporte: {reportId}</span>}
+       </div>
+       <div className="flex flex-col items-end gap-1 text-right">
+          <span className="text-[10px] font-black uppercase text-erani-purple">Profitability Firewall Report</span>
+          <span className="text-[8px] font-bold text-gray-400">{new Date().toLocaleDateString('es-MX')}</span>
+       </div>
+    </div>
+  );
+}
+
+function PrintFooter() {
+  return (
+    <div className="mt-16 pt-8 border-t border-gray-200 dark:border-white/10 flex flex-col gap-6 text-[9px] text-gray-500 break-inside-avoid w-full">
+       <div className="flex justify-between items-center font-bold uppercase tracking-widest">
+          <a href="https://erani.mx" target="_blank" rel="noopener noreferrer" className="text-erani-blue hover:underline">erani.mx</a>
+          <span>Soporte: contacto@erani.mx</span>
+       </div>
+       <p className="text-[8px] text-justify opacity-60 leading-relaxed">
+         CONFIDENCIALIDAD Y SOBERANÍA DE DATOS: Este documento de Análisis Forense Operacional ha sido generado
+         por el Motor de Inferencia Erani bajo protocolos estrictos de privacidad. La información aquí contenida es estrictamente 
+         confidencial y para uso exclusivo del destinatario. Erani opera procesando únicamente vectores de metadata cifrados 
+         y no almacena texto legible ni información de identificación personal en texto claro. 
+         La distribución no autorizada de este documento está estrictamente prohibida.
+       </p>
     </div>
   );
 }

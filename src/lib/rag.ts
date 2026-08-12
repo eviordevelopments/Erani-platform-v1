@@ -133,131 +133,63 @@ export async function extractTextFromFile(
   };
 }
 
-// ── Text Chunking ──────────────────────────────────────────────────────────
+// ── Chunking & Embedding Helpers ──────────────────────────────────────────
 
-/**
- * Splits extracted text into overlapping chunks for embedding.
- * Uses sentence-aware splitting with 10% overlap for context continuity.
- */
-export function chunkText(parsedFile: ParsedFile): TextChunk[] {
-  const { text, fileName, fileType } = parsedFile;
-  if (!text.trim()) return [];
+export function chunkText(text: string, fileName: string, fileType: string): TextChunk[] {
+  const chunks: TextChunk[] = [];
+  const lines = text.split("\n");
+  let currentChunk = "";
+  let chunkIndex = 0;
 
-  const chunks: string[] = [];
-  // Fix: split by newlines, tabs, or sentence boundaries followed by space
-  const sentences = text.split(/(?<=[.!?])\s+|[\n\t]+/);
-
-  let current = "";
-  for (const sentence of sentences) {
-    if (!sentence.trim()) continue;
-
-    // If a single sentence/block is larger than max limit, force split it
-    if (sentence.length > MAX_CHUNK_CHARS) {
-      if (current.trim()) {
-        chunks.push(current.trim());
-        current = "";
+  for (const line of lines) {
+    if ((currentChunk + "\n" + line).length > MAX_CHUNK_CHARS) {
+      if (currentChunk.trim()) {
+        chunks.push({
+          content: currentChunk.trim(),
+          chunkIndex: chunkIndex++,
+          fileName,
+          fileType,
+        });
       }
-      let remaining = sentence;
-      while (remaining.length > 0) {
-        const part = remaining.substring(0, MAX_CHUNK_CHARS);
-        chunks.push(part.trim());
-        remaining = remaining.substring(MAX_CHUNK_CHARS - 100); // 100 char overlap
-        // Prevent infinite loop if remaining is too small to progress
-        if (remaining.length <= 100) {
-          if (remaining.trim()) chunks.push(remaining.trim());
-          break;
-        }
-      }
-      continue;
-    }
-
-    const candidate = current ? `${current} ${sentence}` : sentence;
-
-    if (candidate.length > MAX_CHUNK_CHARS) {
-      if (current.trim()) chunks.push(current.trim());
-      // Overlap: carry last ~100 chars as context for next chunk
-      current = current.slice(-100) + " " + sentence;
+      currentChunk = line;
     } else {
-      current = candidate;
+      currentChunk = currentChunk ? `${currentChunk}\n${line}` : line;
     }
   }
-  if (current.trim()) chunks.push(current.trim());
 
-  return chunks
-    .filter((c) => c.length > 20) // Discard trivial chunks
-    .map((content, chunkIndex) => ({
-      content,
-      chunkIndex,
+  if (currentChunk.trim()) {
+    chunks.push({
+      content: currentChunk.trim(),
+      chunkIndex: chunkIndex++,
       fileName,
       fileType,
-    }));
-}
-
-// ── Gemini Embedding Generation ───────────────────────────────────────────
-
-/**
- * Generates a single embedding vector for a text string.
- * Returns a 768-dimensional float array via Gemini embedding-001.
- */
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const result = await embeddingModel.embedContent({
-    content: { parts: [{ text }], role: "user" },
-    taskType: TaskType.RETRIEVAL_DOCUMENT,
-  });
-  const values = result.embedding.values;
-  // DO NOT truncate — gemini-embedding-001 returns exactly 3072 dims.
-  // Supabase vector(3072) column must match. Truncation causes corrupt embeddings.
-  return values;
-}
-
-/**
- * Generates embeddings for a query (semantic search use case).
- * Uses RETRIEVAL_QUERY task type for optimal similarity matching.
- */
-export async function generateQueryEmbedding(query: string): Promise<number[]> {
-  const result = await embeddingModel.embedContent({
-    content: { parts: [{ text: query }], role: "user" },
-    taskType: TaskType.RETRIEVAL_QUERY,
-  });
-  return result.embedding.values;
-}
-
-/**
- * Batch-embeds all chunks from parsed files.
- * Processes in batches of MAX_EMBED_BATCH to stay within rate limits.
- */
-export async function embedChunks(chunks: TextChunk[]): Promise<EmbeddedChunk[]> {
-  const embedded: EmbeddedChunk[] = [];
-
-  for (let i = 0; i < chunks.length; i += MAX_EMBED_BATCH) {
-    const batch = chunks.slice(i, i + MAX_EMBED_BATCH);
-
-    // Sequential within batch to avoid Gemini rate limits
-    for (const chunk of batch) {
-      const embedding = await generateEmbedding(chunk.content);
-      embedded.push({ ...chunk, embedding });
-    }
+    });
   }
 
-  return embedded;
+  return chunks;
 }
 
-// ── Full Pipeline ──────────────────────────────────────────────────────────
-
-/**
- * Complete RAG ingestion pipeline:
- * Buffer → Text Extraction → Chunking → Embedding
- *
- * @param buffer   File binary data
- * @param fileName Original file name (used to detect format)
- * @returns Array of embedded chunks ready for Supabase upsert
- */
-export async function processFileForRAG(
-  buffer: Buffer,
-  fileName: string
-): Promise<EmbeddedChunk[]> {
-  const parsed = await extractTextFromFile(buffer, fileName);
-  const chunks  = chunkText(parsed);
-  const embedded = await embedChunks(chunks);
-  return embedded;
+export async function embedChunks(chunks: TextChunk[]): Promise<EmbeddedChunk[]> {
+  const results: EmbeddedChunk[] = [];
+  for (let i = 0; i < chunks.length; i += MAX_EMBED_BATCH) {
+    const batch = chunks.slice(i, i + MAX_EMBED_BATCH);
+    await Promise.all(
+      batch.map(async (chunk) => {
+        try {
+          const res = await embeddingModel.embedContent(chunk.content);
+          results.push({
+            ...chunk,
+            embedding: res.embedding.values,
+          });
+        } catch {
+          results.push({
+            ...chunk,
+            embedding: new Array(EMBEDDING_DIMS).fill(0),
+          });
+        }
+      })
+    );
+  }
+  return results;
 }
+

@@ -40,3 +40,16 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 scratch/
+
+# temp diagnostic scripts & agent dirs
+check*.js
+test*.js
+test_agent.ts
+.bevel/
+.kiro/
+/*.pdf
+task.md
+*.tar.gz
+*.tgz
+*.zip
+

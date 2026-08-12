@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { User } from "@supabase/supabase-js";
 import { auditLogger } from "@/lib/auditLogger";
+import { getProfileDataAction } from "@/app/actions/profileActions";
 
 export interface Profile {
   id: string;
@@ -25,6 +26,10 @@ export interface OrgData {
   name: string;
   logo_url: string | null;
   plan: string;
+  paid_subscription: boolean;
+  eris_balance: number;
+  subscription_activated_at: string | null;
+  [key: string]: any;
 }
 
 interface AuthContextType {
@@ -53,82 +58,57 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [org, setOrg] = useState<OrgData | null>(null);
   const [loading, setLoading] = useState(true);
 
-const fetchProfile = async (userId: string, retries = 3, passedToken?: string) => {
+  const fetchProfile = async (userId: string, retries = 3) => {
     try {
-      // Use passed token if available (e.g. right after signUp), else get from session
-      let token = passedToken
-      if (!token) {
-        const { data: { session } } = await supabase.auth.getSession()
-        token = session?.access_token
-      }
-      if (!token) {
-        if (retries > 0) {
-          await new Promise(r => setTimeout(r, 1000))
-          return fetchProfile(userId, retries - 1)
+      const res = await getProfileDataAction(userId);
+
+      if (!res.success) {
+        if (res.code === 'PGRST116') {
+          if (retries > 0) {
+            await new Promise(r => setTimeout(r, 1000));
+            return fetchProfile(userId, retries - 1);
+          }
+        } else if (retries > 0) {
+          await new Promise(r => setTimeout(r, 1000));
+          return fetchProfile(userId, retries - 1);
         }
-        setProfile(null)
-        return
+        console.error('Profile fetch failed:', res.error);
+        setProfile(null);
+        return;
       }
 
-      // Fetch via server route — uses supabaseAdmin scoped to this user's JWT
-      const res = await fetch('/api/profile', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-
-      if (res.ok) {
-        const { profile: data, org: orgData } = await res.json()
-        setProfile(data)
-        if (orgData) setOrg(orgData)
-        else setOrg(null)
-      } else if (res.status === 404) {
-        // Profile doesn't exist yet (e.g. just signed up, profile being created)
-        if (retries > 0) {
-          await new Promise(r => setTimeout(r, 1000))
-          return fetchProfile(userId, retries - 1)
-        }
-        setProfile(null)
-      } else {
-        if (retries > 0) {
-          await new Promise(r => setTimeout(r, 1000))
-          return fetchProfile(userId, retries - 1)
-        }
-        console.error('Profile fetch failed:', await res.text())
-        setProfile(null)
-      }
+      setProfile(res.profile);
+      setOrg(res.org || null);
     } catch (err) {
       if (retries > 0) {
-        await new Promise(r => setTimeout(r, 1000))
-        return fetchProfile(userId, retries - 1)
+        await new Promise(r => setTimeout(r, 1000));
+        return fetchProfile(userId, retries - 1);
       }
-      console.error('Profile fetch failed after retries:', err)
-      setProfile(null)
+      console.error('Profile fetch failed after retries:', err);
+      setProfile(null);
     }
-  }
+  };
 
   const refreshProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token
-    if (!token) return
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
 
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 6000)
-      const res = await fetch('/api/profile', {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: controller.signal,
-      })
-      clearTimeout(timeout)
-      if (res.ok) {
-        const { profile: data, org: orgData } = await res.json()
-        setUser(session.user)
-        setProfile(data)
-        if (orgData) setOrg(orgData)
-        else setOrg(null)
+      const res = await getProfileDataAction(user.id);
+
+      if (!res.success) {
+        console.warn('refreshProfile failed:', res.error);
+        return;
       }
+
+      setUser(user);
+      setProfile(res.profile);
+      setOrg(res.org || null);
     } catch (err) {
-      console.warn('refreshProfile failed:', err)
+      console.warn('refreshProfile failed:', err);
     }
-  }
+  };
 
   const updateErisBalance = async (newBalance: number) => {
     if (!user) return;
@@ -149,21 +129,26 @@ const fetchProfile = async (userId: string, retries = 3, passedToken?: string) =
     }
   };
 
+  const clearSbCookies = () => {
+    if (typeof window === 'undefined') return;
+    document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
+    document.cookie = 'sb-access-token=; max-age=0; SameSite=Lax; Secure';
+    document.cookie = 'sb-access-token=; path=/dashboard; max-age=0; SameSite=Lax; Secure';
+    document.cookie = 'sb-access-token=; path=/login; max-age=0; SameSite=Lax; Secure';
+    document.cookie = 'sb-access-token=; path=/register; max-age=0; SameSite=Lax; Secure';
+  };
+
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const currentUser = session?.user ?? null;
 
       if (currentUser) {
-        if (session && typeof window !== 'undefined') {
-          document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${session.expires_in || 3600}; SameSite=Lax; Secure`;
-        }
+        clearSbCookies();
         setUser(currentUser);
-        await fetchProfile(currentUser.id);
+        await fetchProfile(currentUser.id, 3);
       } else {
-        if (typeof window !== 'undefined') {
-          document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
-        }
+        clearSbCookies();
         setUser(null);
       }
       setLoading(false);
@@ -174,17 +159,13 @@ const fetchProfile = async (userId: string, retries = 3, passedToken?: string) =
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        if (session && typeof window !== 'undefined') {
-          document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${session.expires_in || 3600}; SameSite=Lax; Secure`;
-        }
-        await fetchProfile(session.user.id);
+        clearSbCookies();
+        await fetchProfile(session.user.id, 3);
         if (event === 'SIGNED_IN') {
-          await auditLogger.log('LOGIN', 'Sesión iniciada correctamente', {}, 'log-in');
+          auditLogger.log('LOGIN', 'Sesión iniciada correctamente', {}, 'log-in').catch(() => {});
         }
       } else {
-        if (typeof window !== 'undefined') {
-          document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
-        }
+        clearSbCookies();
         setProfile(null);
         setOrg(null);
       }
@@ -195,11 +176,9 @@ const fetchProfile = async (userId: string, retries = 3, passedToken?: string) =
   }, []);
 
   const signOut = async () => {
-    await auditLogger.log('LOGOUT', 'Sesión cerrada por el usuario', {}, 'log-out');
+    auditLogger.log('LOGOUT', 'Sesión cerrada por el usuario', {}, 'log-out').catch(() => {});
     await supabase.auth.signOut();
-    if (typeof window !== 'undefined') {
-      document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
-    }
+    clearSbCookies();
     setUser(null);
     setProfile(null);
     setOrg(null);

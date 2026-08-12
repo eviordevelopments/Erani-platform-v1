@@ -3,8 +3,8 @@
 import Sidebar from "@/components/Sidebar";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatInterface from "@/components/chat/ChatInterface";
-import { motion } from "framer-motion";
 import { useDashboard } from "@/context/DashboardContext";
+import { ChatProvider } from "@/context/ChatContext";
 
 export default function AgentPage() {
   const { isSidebarCollapsed } = useDashboard();
@@ -18,8 +18,10 @@ export default function AgentPage() {
         style={{ marginLeft: isSidebarCollapsed ? "100px" : "300px" }}
       >
         <div className="flex-1 p-6 flex gap-6 h-screen overflow-hidden">
-           <ChatSidebar />
-           <ChatInterface />
+           <ChatProvider>
+             <ChatSidebar />
+             <ChatInterface />
+           </ChatProvider>
         </div>
       </main>
 

@@ -21,6 +21,8 @@ export default function CheckoutPage() {
   const [stripeUrl, setStripeUrl] = useState(defaultStripeUrl);
   const [referralCode, setReferralCode] = useState("");
   const [referralApplied, setReferralApplied] = useState(false);
+  const [slaAccepted, setSlaAccepted] = useState(false);
+  const [hasOpenedSLA, setHasOpenedSLA] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -235,7 +237,7 @@ export default function CheckoutPage() {
             <ChevronLeft className="w-4 h-4" /> Cancelar
           </Link>
           <div className="text-[10px] md:text-xs font-black uppercase tracking-widest text-nav-text bg-foreground/5 px-3 py-1 rounded-full border border-glass-border">
-             Paso {step} de 4
+             Paso {step} de 5
           </div>
         </div>
         
@@ -244,14 +246,15 @@ export default function CheckoutPage() {
           <div className="flex justify-between text-[10px] md:text-xs font-black uppercase tracking-widest text-nav-text px-1">
             <span className={`transition-colors duration-300 ${step >= 1 ? "text-erani-blue" : ""}`}>1. General</span>
             <span className={`transition-colors duration-300 ${step >= 2 ? "text-erani-blue" : ""}`}>2. Fiscal</span>
-            <span className={`transition-colors duration-300 ${step >= 3 ? "text-erani-purple" : ""}`}>3. Firma</span>
-            <span className={`transition-colors duration-300 ${step >= 4 ? "text-emerald-500" : ""}`}>4. Pago</span>
+            <span className={`transition-colors duration-300 ${step >= 3 ? "text-erani-purple" : ""}`}>3. SLA</span>
+            <span className={`transition-colors duration-300 ${step >= 4 ? "text-erani-purple" : ""}`}>4. Firma</span>
+            <span className={`transition-colors duration-300 ${step >= 5 ? "text-emerald-500" : ""}`}>5. Pago</span>
           </div>
           <div className="w-full h-3 bg-foreground/10 rounded-full overflow-hidden relative shadow-inner">
             <motion.div 
               className="absolute top-0 left-0 h-full bg-gradient-to-r from-erani-blue via-erani-purple to-emerald-500"
-              initial={{ width: `${((step - 1) / 3) * 100}%` }}
-              animate={{ width: `${((step === 1 ? 0.25 : step === 2 ? 0.5 : step === 3 ? 0.75 : 1)) * 100}%` }}
+              initial={{ width: `${((step - 1) / 4) * 100}%` }}
+              animate={{ width: `${((step === 1 ? 0.2 : step === 2 ? 0.4 : step === 3 ? 0.6 : step === 4 ? 0.8 : 1)) * 100}%` }}
               transition={{ duration: 0.5, ease: "easeInOut" }}
             >
               {/* Light flow effect inside the progress bar */}
@@ -356,13 +359,17 @@ export default function CheckoutPage() {
                     <div className="flex items-start gap-3">
                       <input type="checkbox" id="termsAccepted" name="termsAccepted" checked={formData.termsAccepted} onChange={handleInputChange} className="w-4 h-4 rounded bg-foreground/5 border-glass-border text-erani-purple focus:ring-erani-purple mt-0.5" />
                       <label htmlFor="termsAccepted" className="text-sm font-medium text-nav-text leading-relaxed cursor-pointer">
-                        Acepto los Términos y Condiciones del contrato de servicios ERANI Beta.
+                        Acepto los{" "}
+                        <a href="/TC_ERANI.pdf" target="_blank" rel="noopener noreferrer" className="text-erani-purple hover:underline font-bold">
+                          Términos y Condiciones
+                        </a>{" "}
+                        del contrato de servicios ERANI Beta.
                       </label>
                     </div>
                     <div className="flex items-start gap-3">
                       <input type="checkbox" id="privacyAccepted" name="privacyAccepted" checked={formData.privacyAccepted} onChange={handleInputChange} className="w-4 h-4 rounded bg-foreground/5 border-glass-border text-erani-purple focus:ring-erani-purple mt-0.5" />
                       <label htmlFor="privacyAccepted" className="text-sm font-medium text-nav-text leading-relaxed cursor-pointer">
-                        He leído y acepto el <a href="#" className="text-erani-purple hover:underline font-bold">Aviso de Privacidad</a>.
+                        He leído y acepto el <a href="/TC_ERANI.pdf" target="_blank" rel="noopener noreferrer" className="text-erani-purple hover:underline font-bold">Aviso de Privacidad</a>.
                       </label>
                     </div>
                   </div>
@@ -569,16 +576,119 @@ export default function CheckoutPage() {
                       disabled={!isStep2Valid()}
                       className="button-premium px-8 py-4 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Ir a Firma <ArrowRight className="w-4 h-4" />
+                      Ir a Contrato (SLA) <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
                 </motion.div>
               )}
 
-              {/* STEP 3: CONFIRMATION & SIGNATURE */}
+              {/* STEP 3: CONTRACT (SLA) */}
               {step === 3 && (
-                <motion.div 
+                <motion.div
                   key="step3"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="flex flex-col gap-8"
+                >
+                  <div className="flex flex-col gap-2">
+                    <h2 className="text-3xl font-black text-foreground">Contrato de Servicios (SLA)</h2>
+                    <p className="text-sm text-nav-text font-medium">
+                      Por favor lee, descarga y acepta el Acuerdo de Nivel de Servicio (SLA) de ERANI antes de continuar con la firma digital y el pago.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-6">
+                    {/* SLA iframe */}
+                    <div className="w-full h-[500px] rounded-2xl border border-glass-border overflow-hidden bg-background/50 relative shadow-inner">
+                      <iframe
+                        src="/SLA_ERANI.pdf"
+                        className="w-full h-full border-0"
+                        title="ERANI SLA"
+                      />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-wrap gap-4 items-center justify-between">
+                      <div className="flex gap-3">
+                        <a
+                          href="/SLA_ERANI.pdf"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setHasOpenedSLA(true)}
+                          className="px-5 py-3 rounded-xl border border-glass-border bg-foreground/5 hover:bg-foreground/10 text-xs font-bold uppercase tracking-widest text-foreground transition-all flex items-center gap-2"
+                        >
+                          <ExternalLink className="w-4 h-4 text-erani-blue" /> Abrir en Pestaña Nueva
+                        </a>
+                        <a
+                          href="/SLA_ERANI.pdf"
+                          download="SLA_ERANI.pdf"
+                          onClick={() => setHasOpenedSLA(true)}
+                          className="px-5 py-3 rounded-xl border border-glass-border bg-foreground/5 hover:bg-foreground/10 text-xs font-bold uppercase tracking-widest text-foreground transition-all flex items-center gap-2"
+                        >
+                          <UploadCloud className="w-4 h-4 rotate-180 text-erani-blue" /> Descargar Contrato (PDF)
+                        </a>
+                      </div>
+                      {!hasOpenedSLA && (
+                        <button
+                          type="button"
+                          onClick={() => setHasOpenedSLA(true)}
+                          className="px-5 py-3 rounded-xl bg-erani-blue/10 border border-erani-blue/20 hover:bg-erani-blue/20 text-xs font-bold uppercase tracking-widest text-erani-blue transition-all flex items-center gap-2"
+                        >
+                          Habilitar Aceptación
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Checkbox Aceptacion */}
+                    <div className="flex items-start gap-3 p-5 bg-foreground/5 border border-glass-border rounded-xl">
+                      <input
+                        type="checkbox"
+                        id="slaAccepted"
+                        checked={slaAccepted}
+                        disabled={!hasOpenedSLA}
+                        onChange={(e) => setSlaAccepted(e.target.checked)}
+                        className="w-5 h-5 rounded bg-foreground/5 border-glass-border text-erani-purple focus:ring-erani-purple mt-0.5 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                      <div className="flex flex-col gap-1">
+                        <label htmlFor="slaAccepted" className={`text-sm font-bold leading-none cursor-pointer ${!hasOpenedSLA ? 'text-nav-text opacity-50 cursor-not-allowed' : 'text-foreground'}`}>
+                          He leído el Acuerdo de Nivel de Servicio (SLA) de ERANI y acepto sus términos y condiciones.
+                        </label>
+                        {!hasOpenedSLA ? (
+                          <span className="text-[10px] font-medium text-erani-coral">
+                            * Es obligatorio abrir o descargar el contrato usando los botones de arriba antes de aceptar.
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-emerald-500">
+                            ✓ Documento visualizado correctamente. Casilla habilitada.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between pt-6 border-t border-glass-border">
+                    <button 
+                      onClick={() => setStep(2)}
+                      className="px-6 py-4 rounded-xl text-xs font-bold uppercase tracking-widest text-nav-text hover:text-foreground transition-colors"
+                    >
+                      Regresar
+                    </button>
+                    <button 
+                      onClick={() => setStep(4)}
+                      disabled={!slaAccepted}
+                      className="button-premium px-8 py-4 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Continuar a Firma <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* STEP 4: CONFIRMATION & SIGNATURE */}
+              {step === 4 && (
+                <motion.div 
+                  key="step4"
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
@@ -675,15 +785,15 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
-                  <div className="flex justify-between pt-4 border-t border-glass-border">
+                           <div className="flex justify-between pt-4 mt-2 border-t border-glass-border">
                     <button 
-                      onClick={() => setStep(2)}
+                      onClick={() => setStep(3)}
                       className="px-6 py-4 rounded-xl text-xs font-bold uppercase tracking-widest text-nav-text hover:text-foreground transition-colors"
                     >
                       Regresar
                     </button>
                     <button 
-                      onClick={() => setStep(4)}
+                      onClick={() => setStep(5)}
                       disabled={!hasSignature}
                       className="button-premium px-8 py-4 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -693,10 +803,10 @@ export default function CheckoutPage() {
                 </motion.div>
               )}
 
-              {/* STEP 4: PROCESSING & PAYMENT */}
-              {step === 4 && (
+              {/* STEP 5: PROCESSING & PAYMENT */}
+              {step === 5 && (
                 <motion.div 
-                  key="step4"
+                  key="step5"
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
@@ -706,7 +816,7 @@ export default function CheckoutPage() {
                     <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
                       <ShieldCheck className="w-10 h-10 text-emerald-500" />
                     </div>
-                    <h2 className="text-4xl font-black text-foreground">Procesamiento Seguro</h2>
+                    <h2 className="text-2xl font-black text-foreground">Procesamiento Seguro</h2>
                     <p className="text-nav-text text-sm max-w-2xl font-medium">Estás a un paso de comenzar tu intervención forense. Verifica los detalles, aplica tu código de referido si tienes uno y procesa tu pago de manera segura.</p>
                   </div>
                   
@@ -755,9 +865,39 @@ export default function CheckoutPage() {
                         </label>
                       </div>
 
+                      {/* SECURE STRIPE NARRATIVE & BADGE */}
+                      <div className="w-full bg-[#635BFF]/5 border border-[#635BFF]/20 p-6 rounded-2xl flex flex-col gap-4 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#635BFF]/10 blur-[40px] rounded-full pointer-events-none transition-all group-hover:scale-150 duration-700" />
+                        
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center bg-[#635BFF] text-white px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider shadow-[0_0_15px_rgba(99,91,255,0.4)] animate-pulse">
+                            Stripe Secure
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-[#635BFF]">Powered by Stripe</span>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <p className="text-xs text-nav-text font-medium leading-relaxed">
+                            Procesamos tus pagos usando <strong className="text-foreground font-bold">Stripe</strong>, líder mundial en infraestructura de pagos. Tu información financiera está completamente encriptada y resguardada bajo estándares PCI-DSS Nivel 1, asegurando una experiencia de adquisición rápida y 100% segura.
+                          </p>
+                          <p className="text-[11px] text-[#635BFF] font-black uppercase tracking-wider flex items-center gap-1.5">
+                            <span>🔒 Encriptación SSL de 256 bits</span>
+                            <span>•</span>
+                            <span>🛡️ Protección Anti-Fraude Activa</span>
+                          </p>
+                        </div>
+
+                        <div className="pt-3 border-t border-[#635BFF]/15 text-xs text-nav-text font-medium leading-relaxed">
+                          Si tienes alguna duda o necesitas asistencia personalizada durante tu compra, por favor comunícate con nuestro equipo de Ventas y Soporte B2B al correo{" "}
+                          <a href="mailto:diego.a182700@gmail.com" className="text-erani-blue font-bold hover:underline">diego.a182700@gmail.com</a>{" "}
+                          o al teléfono{" "}
+                          <a href="tel:+524624004066" className="text-erani-blue font-bold hover:underline">+52 462 400 4066</a>.
+                        </div>
+                      </div>
+
                       <div className="flex flex-col sm:flex-row gap-4 w-full mt-2">
                         <button 
-                          onClick={() => setStep(3)}
+                          onClick={() => setStep(4)}
                           className="px-8 py-4 rounded-xl border border-glass-border bg-foreground/5 text-xs font-bold uppercase tracking-widest text-foreground hover:bg-foreground/10 transition-colors flex-1"
                         >
                           Regresar a Firma
@@ -806,11 +946,11 @@ export default function CheckoutPage() {
                         <div className="mt-auto pt-4 flex flex-col gap-3 border-t border-glass-border">
                           <h5 className="text-[10px] font-black uppercase tracking-widest text-nav-text">Contacto y Soporte B2B</h5>
                           <div className="flex flex-col gap-2">
-                            <a href="mailto:soporte@erani.mx" className="flex items-center gap-2 text-xs font-bold text-foreground hover:text-erani-blue transition-colors w-fit">
-                              <Mail className="w-4 h-4 text-erani-blue" /> soporte@erani.mx
+                            <a href="mailto:diego.a182700@gmail.com" className="flex items-center gap-2 text-xs font-bold text-foreground hover:text-erani-blue transition-colors w-fit">
+                              <Mail className="w-4 h-4 text-erani-blue" /> diego.a182700@gmail.com
                             </a>
-                            <a href="tel:+525541622359" className="flex items-center gap-2 text-xs font-bold text-foreground hover:text-erani-blue transition-colors w-fit">
-                              <Phone className="w-4 h-4 text-erani-blue" /> +52 55 4162 2359
+                            <a href="tel:+524624004066" className="flex items-center gap-2 text-xs font-bold text-foreground hover:text-erani-blue transition-colors w-fit">
+                              <Phone className="w-4 h-4 text-erani-blue" /> +52 462 400 4066
                             </a>
                           </div>
                         </div>

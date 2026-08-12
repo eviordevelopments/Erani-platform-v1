@@ -11,7 +11,10 @@ import {
   X,
   ArrowRight,
   Shield,
-  User
+  User,
+  FileText,
+  Lock,
+  Zap
 } from "lucide-react";
 import Image from "next/image";
 
@@ -42,6 +45,12 @@ export default function OnboardingModal({ isOpen, onClose }: OnboardingModalProp
       title: "Reunión Estratégica",
       description: "Agenda tu sesión de onboarding con un especialista en auditoría forense.",
       type: "meeting"
+    },
+    {
+      id: "security",
+      title: "Transparencia Operativa Total",
+      description: "No requerimos credenciales. Tú controlas el flujo de datos enviando únicamente los metadatos necesarios.",
+      type: "security"
     },
     {
       id: "finish",
@@ -100,6 +109,9 @@ export default function OnboardingModal({ isOpen, onClose }: OnboardingModalProp
             <div className="p-12 flex flex-col gap-8 min-h-[500px]">
               {/* Header */}
               <div className="flex flex-col items-center text-center gap-2">
+                {pages[currentPage].id === "security" && (
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-erani-blue">Protocolo de Seguridad</span>
+                )}
                 <motion.h2 
                   key={`title-${currentPage}`}
                   initial={{ opacity: 0, y: 5 }}
@@ -231,6 +243,66 @@ export default function OnboardingModal({ isOpen, onClose }: OnboardingModalProp
 
                   {currentPage === 3 && (
                     <motion.div 
+                      key="security-content"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      className="w-full flex flex-col gap-8 mt-4"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Card 1 */}
+                        <div className="bg-foreground/5 border border-glass-border p-5 rounded-2xl flex items-start gap-4 hover:bg-foreground/10 transition-colors">
+                          <div className="p-3 bg-foreground/5 rounded-xl border border-glass-border">
+                            <Shield className="w-5 h-5 text-erani-blue" />
+                          </div>
+                          <div className="flex flex-col gap-1 text-left">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-foreground">Export de Canales</span>
+                            <span className="text-[9px] text-nav-text leading-relaxed">Historial de mensajes técnicos de Slack o Teams.</span>
+                          </div>
+                        </div>
+                        {/* Card 2 */}
+                        <div className="bg-foreground/5 border border-glass-border p-5 rounded-2xl flex items-start gap-4 hover:bg-foreground/10 transition-colors">
+                          <div className="p-3 bg-foreground/5 rounded-xl border border-glass-border">
+                            <FileText className="w-5 h-5 text-erani-blue" />
+                          </div>
+                          <div className="flex flex-col gap-1 text-left">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-foreground">Logs de Gestión</span>
+                            <span className="text-[9px] text-nav-text leading-relaxed">Reportes en CSV de Jira, ClickUp o Asana.</span>
+                          </div>
+                        </div>
+                        {/* Card 3 */}
+                        <div className="bg-foreground/5 border border-glass-border p-5 rounded-2xl flex items-start gap-4 hover:bg-foreground/10 transition-colors">
+                          <div className="p-3 bg-foreground/5 rounded-xl border border-glass-border">
+                            <Lock className="w-5 h-5 text-erani-blue" />
+                          </div>
+                          <div className="flex flex-col gap-1 text-left">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-foreground">Cifrado de Extremo</span>
+                            <span className="text-[9px] text-nav-text leading-relaxed">Solo leemos metadatos operativos.</span>
+                          </div>
+                        </div>
+                        {/* Card 4 */}
+                        <div className="bg-foreground/5 border border-glass-border p-5 rounded-2xl flex items-start gap-4 hover:bg-foreground/10 transition-colors">
+                          <div className="p-3 bg-foreground/5 rounded-xl border border-glass-border">
+                            <Zap className="w-5 h-5 text-erani-blue" />
+                          </div>
+                          <div className="flex flex-col gap-1 text-left">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-foreground">Impacto Real</span>
+                            <span className="text-[9px] text-nav-text leading-relaxed">Cruce de datos facturados vs esfuerzo operativo.</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={nextPage}
+                        className="w-full py-4 rounded-xl bg-gradient-to-r from-erani-blue to-erani-purple text-white text-[10px] uppercase font-black tracking-[0.2em] shadow-[0_0_20px_rgba(0,85,160,0.3)] hover:opacity-90 transition-opacity flex items-center justify-center gap-3 mt-4"
+                      >
+                        Activar Blindaje Forense <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {currentPage === 4 && (
+                    <motion.div 
                       key="finish-content"
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -272,25 +344,27 @@ export default function OnboardingModal({ isOpen, onClose }: OnboardingModalProp
                   </div>
                 </div>
 
-                {/* Bottom Buttons */}
-                <div className="flex items-center justify-between">
-                  <button 
-                    onClick={prevPage}
-                    disabled={currentPage === 0}
-                    className="flex items-center gap-2 text-[10px] uppercase font-black tracking-widest text-nav-text hover:text-foreground transition-colors disabled:opacity-0"
-                  >
-                    <ChevronLeft className="w-4 h-4" /> Anterior
-                  </button>
+                {/* Bottom Buttons - Hidden on security page because it has its own custom button */}
+                {pages[currentPage].id !== "security" && (
+                  <div className="flex items-center justify-between mt-4">
+                    <button 
+                      onClick={prevPage}
+                      disabled={currentPage === 0}
+                      className="flex items-center gap-2 text-[10px] uppercase font-black tracking-widest text-nav-text hover:text-foreground transition-colors disabled:opacity-0"
+                    >
+                      <ChevronLeft className="w-4 h-4" /> Anterior
+                    </button>
 
-                  <button 
-                    onClick={nextPage}
-                    className="button-premium px-10 py-4 rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-3"
-                  >
-                    {currentPage === pages.length - 1 ? "Recupera tu Rentabilidad" : "Siguiente"}
-                    {currentPage < pages.length - 1 && <ChevronRight className="w-4 h-4" />}
-                    {currentPage === pages.length - 1 && <ArrowRight className="w-4 h-4" />}
-                  </button>
-                </div>
+                    <button 
+                      onClick={nextPage}
+                      className="button-premium px-10 py-4 rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-3"
+                    >
+                      {currentPage === pages.length - 1 ? "Recupera tu Rentabilidad" : "Siguiente"}
+                      {currentPage < pages.length - 1 && <ChevronRight className="w-4 h-4" />}
+                      {currentPage === pages.length - 1 && <ArrowRight className="w-4 h-4" />}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

@@ -8,3 +8,14 @@
 - [x] Enhance Forensic API Error Logging & Validation
 - [x] Improve AuthContext Network Resilience
 - [x] Final Verification and Cleanup.
+
+- Task: Fix sesión y configuración personalizada
+- [x] 1. Crear SQL migration para `user_preferences` (agregar `user_id`, `bento_order`, RLS)
+- [x] 2. Agregar acción `create_user_preferences` en `/api/auth/org/route.ts`
+- [x] 3. Fix `/register/page.tsx` — setSession + refreshProfile + crear preferences
+- [x] 4. Fix `DashboardContext.tsx` — corregir mismatch user_id, reset hasFetched
+- [x] 5. Fix `/onboarding/page.tsx` — crear preferences para admin después de registro
+- [x] 6. Verificar build
+- [ ] 7. Fix `/login/page.tsx` — setSession params + refreshProfile on login
+- [ ] 8. Fetch live insights from `forensic_reports` in `DashboardContext.tsx`
+- [ ] 9. Implement premium empty state in `/dashboard/page.tsx` if no live insights exist (no mock data fallback)

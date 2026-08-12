@@ -5,6 +5,7 @@ const nextConfig = {
   // Prevent webpack from bundling native Node modules that use pdfjs-dist internally.
   // These must run as true Node.js CJS modules, NOT in the RSC webpack sandbox.
   serverExternalPackages: ['pdf-parse', 'pdfjs-dist', 'xlsx', 'csv-parse'],
+  transpilePackages: ['recharts'],
   // Prevent ESLint warnings from failing CI builds on Netlify
   eslint: {
     ignoreDuringBuilds: true,

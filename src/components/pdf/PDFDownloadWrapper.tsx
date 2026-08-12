@@ -6,7 +6,7 @@ import { DownloadCloud, Loader2 } from "lucide-react";
 import type { ForensicReportData } from "@/app/forensic/page";
 import { auditLogger } from "@/lib/auditLogger";
 
-export default function PDFDownloadWrapper({ data }: { data: ForensicReportData }) {
+export default function PDFDownloadWrapper({ data, org, reportId }: { data: ForensicReportData, org?: any, reportId?: string | null }) {
   const handleDownloadClick = async () => {
     await auditLogger.log(
       'REPORT_DOWNLOAD',
@@ -19,9 +19,9 @@ export default function PDFDownloadWrapper({ data }: { data: ForensicReportData 
   return (
     <div onClick={handleDownloadClick}>
       <PDFDownloadLink
-        document={<ForensicPDFDocument data={data} />}
+        document={<ForensicPDFDocument data={data} org={org} reportId={reportId} />}
         fileName={`Reporte_Forense_${data.projectName || "Erani"}.pdf`}
-        className="button-premium px-4 py-2 rounded-xl text-[10px] uppercase font-black tracking-widest flex items-center gap-2"
+        className="button-premium px-8 py-3.5 rounded-xl text-[10px] uppercase font-black tracking-widest flex items-center gap-2"
       >
         {({ loading }) =>
           loading ? (

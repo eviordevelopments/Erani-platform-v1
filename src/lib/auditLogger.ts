@@ -4,10 +4,14 @@ export type AuditAction =
   | 'LOGIN' 
   | 'LOGOUT' 
   | 'PROJECT_CREATE' 
+  | 'PROJECT_UPDATE'
+  | 'PROJECT_DUPLICATE'
+  | 'PROJECT_RENAME'
   | 'PROJECT_DELETE'
   | 'REPORT_GENERATE' 
   | 'REPORT_DOWNLOAD'
   | 'FILE_UPLOAD'
+  | 'FILE_DELETE'
   | 'CONFIG_CHANGE'
   | 'FEATURE_TOGGLE'
   | 'TEAM_INVITE'
@@ -24,10 +28,14 @@ export type IconType =
   | 'log-in' 
   | 'log-out' 
   | 'plus' 
+  | 'copy'
   | 'trash' 
+  | 'trash-2'
+  | 'update'
   | 'file-text' 
   | 'download' 
   | 'upload' 
+  | 'upload-cloud'
   | 'settings' 
   | 'users' 
   | 'navigation' 
@@ -42,6 +50,8 @@ export type IconType =
  * Utility to record platform activity.
  * Respects the 'streaming_logs_enabled' setting from organization_features.
  */
+let sessionPromise: Promise<any> | null = null;
+
 export const auditLogger = {
   async log(
     action: AuditAction,
@@ -50,8 +60,12 @@ export const auditLogger = {
     iconType: IconType = 'activity'
   ) {
     try {
-      // 1. Get current session
-      const { data: { session } } = await supabase.auth.getSession();
+      // 1. Get current session (deduplicating concurrent calls to avoid token lock stealing)
+      if (!sessionPromise) {
+        sessionPromise = supabase.auth.getSession();
+        sessionPromise.catch(() => {}).finally(() => { sessionPromise = null; });
+      }
+      const { data: { session } } = await sessionPromise;
       if (!session) return;
 
       const userId = session.user.id;
@@ -81,7 +95,7 @@ export const auditLogger = {
       }
 
       // 4. Insert log
-      const { error } = await supabase
+      let { error } = await supabase
         .from('audit_logs')
         .insert({
           organization_id: orgId,
@@ -91,6 +105,20 @@ export const auditLogger = {
           metadata,
           icon_type: iconType
         });
+
+      // Fallback if the column icon_type doesn't exist in the database yet
+      if (error && (error.message.includes('icon_type') || error.code === '42703')) {
+        const { error: fallbackError } = await supabase
+          .from('audit_logs')
+          .insert({
+            organization_id: orgId,
+            user_id: userId,
+            action,
+            description,
+            metadata
+          });
+        error = fallbackError;
+      }
 
       if (error) {
         console.error('[AuditLogger] Error inserting log:', error.message);

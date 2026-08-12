@@ -16,15 +16,30 @@ import {
   ShieldCheck,
   Cpu,
   ArrowUpRight,
-  ExternalLink
+  ExternalLink,
+  Lock,
+  Loader2
 } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 import Sidebar from "@/components/Sidebar";
+import { useAuth } from "@/context/AuthContext";
+import AutomationSimulatorModal from "@/components/marketplace/AutomationSimulatorModal";
+import CustomFlowSidebar from "@/components/marketplace/CustomFlowSidebar";
+import { useRouter } from "next/navigation";
 
 export default function MarketplacePage() {
   const { automations, toggleAutomation } = useDashboard();
+  const { profile, org } = useAuth();
+  const router = useRouter();
+  
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
+  
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+  const [selectedAuto, setSelectedAuto] = useState<any>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const isTrial = org?.plan === 'trial' || org?.plan === 'free' || !org?.paid_subscription;
 
   const filteredAutomations = useMemo(() => {
     return automations.filter(auto => {
@@ -36,9 +51,9 @@ export default function MarketplacePage() {
   }, [automations, search, filter]);
 
   const totalROI = useMemo(() => {
-    const active = automations.filter(a => a.status === "active");
-    if (active.length === 0) return 0;
-    return active.reduce((acc, curr) => acc + curr.roi_projection, 0) / active.length;
+    return automations
+      .filter(a => a.status === "active")
+      .reduce((acc, curr) => acc + curr.roi_projection, 0);
   }, [automations]);
 
   const totalHoursSaved = useMemo(() => {
@@ -63,8 +78,8 @@ export default function MarketplacePage() {
                 </div>
                 <span className="text-[10px] uppercase font-black tracking-[0.2em] text-erani-blue">Marketplace Forense</span>
               </div>
-              <h1 className="text-4xl font-black uppercase tracking-tighter text-foreground">
-                Automatizaciones <span className="text-erani-blue">n8n</span>
+              <h1 className="text-3xl font-black uppercase tracking-tighter text-foreground">
+                Automatizaciones <span className="text-erani-blue">Forenses</span>
               </h1>
               <p className="text-nav-text text-sm mt-2 max-w-xl">
                 Ecosistema de flujos activos diseñados para maximizar el ROI operativo y blindar la rentabilidad mediante ingeniería forense.
@@ -108,14 +123,35 @@ export default function MarketplacePage() {
           <div className="flex flex-col md:flex-row gap-4 items-center">
             <div className="relative flex-1 group w-full">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-nav-text group-focus-within:text-erani-blue transition-colors" />
-              <input 
+              <input
                 type="text"
                 placeholder="Buscar automatización por nombre o descripción..."
-                className="input-premium !pl-12"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-foreground/5 border border-glass-border rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:border-erani-blue transition-colors text-foreground placeholder:text-muted-foreground"
               />
             </div>
+            
+            <button 
+              onClick={async () => {
+                if (profile?.organization_id) {
+                  try {
+                    await fetch('/api/automations/sync', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ organizationId: profile.organization_id })
+                    });
+                    window.location.reload();
+                  } catch (e) {
+                    console.error("Sync error:", e);
+                  }
+                }
+              }}
+              className="px-6 py-2.5 rounded-xl text-[9px] uppercase font-black tracking-widest bg-erani-purple/10 text-erani-purple hover:bg-erani-purple/20 transition-all border border-erani-purple/20 flex items-center gap-2 whitespace-nowrap"
+            >
+              <Zap className="w-3 h-3" />
+              Sincronizar IA
+            </button>
             
             <div className="flex items-center gap-2 glassmorphism p-1">
               {["all", "forense", "financiera", "operativa"].map((cat) => (
@@ -134,8 +170,9 @@ export default function MarketplacePage() {
             </div>
           </div>
 
-          {/* Automation Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Automation Grid & Trial Lock Overlay */}
+          <div className="relative">
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <AnimatePresence mode="popLayout">
               {filteredAutomations.map((auto) => (
                 <motion.div
@@ -146,10 +183,10 @@ export default function MarketplacePage() {
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="premium-border-container group"
                 >
-                  <div className="premium-border-inner flex flex-col p-6 gap-6 min-h-[320px]">
+                  <div className="premium-border-inner flex flex-col p-8 gap-6 min-h-[380px]">
                     {/* Status & Category */}
-                    <div className="flex justify-between items-start">
-                      <div className={`px-3 py-1 rounded-full text-[7px] uppercase font-black tracking-[0.2em] border ${
+                    <div className="flex w-full justify-between items-center mb-6">
+                      <div className={`px-4 py-1.5 rounded-full text-[8px] uppercase font-black tracking-[0.2em] border ${
                         auto.category === "forense" ? "border-erani-blue/30 text-erani-blue bg-erani-blue/5" :
                         auto.category === "financiera" ? "border-erani-purple/30 text-erani-purple bg-erani-purple/5" :
                         "border-erani-coral/30 text-erani-coral bg-erani-coral/5"
@@ -158,49 +195,56 @@ export default function MarketplacePage() {
                       </div>
                       
                       <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                        <span className={`w-2 h-2 rounded-full animate-pulse ${
                           auto.status === "active" ? "bg-emerald-500" : "bg-gray-500"
                         }`} />
-                        <span className="text-[8px] uppercase font-black tracking-widest text-nav-text">
+                        <span className="text-[9px] uppercase font-black tracking-widest text-nav-text">
                           {auto.status === "active" ? "En Línea" : "Inactivo"}
                         </span>
                       </div>
                     </div>
 
                     {/* Content */}
-                    <div className="flex flex-col gap-2">
-                      <h3 className="text-lg font-black uppercase tracking-tight text-foreground group-hover:text-erani-blue transition-colors flex items-center gap-2">
+                    <div className="flex flex-col gap-4">
+                      <h3 className="text-base font-black uppercase tracking-tight text-foreground group-hover:text-erani-blue transition-colors flex items-start gap-2 leading-snug">
                         {auto.name}
-                        {auto.status === "active" && <Zap className="w-4 h-4 text-erani-blue fill-erani-blue" />}
+                        {auto.status === "active" && <Zap className="w-4 h-4 text-erani-blue fill-erani-blue shrink-0 mt-1" />}
                       </h3>
-                      <p className="text-nav-text text-xs leading-relaxed line-clamp-3">
+                      <p className="text-nav-text text-sm leading-relaxed">
                         {auto.description}
                       </p>
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-2 gap-4 mt-auto pt-4 border-t border-glass-border">
+                    <div className="grid grid-cols-2 gap-4 mt-auto pt-8 border-t border-glass-border">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-nav-text">
-                          <BarChart3 className="w-3 h-3" />
-                          <span className="text-[7px] uppercase font-black tracking-widest">ROI Proyectado</span>
+                          <BarChart3 className="w-3 h-3 shrink-0" />
+                          <span className="text-[7px] uppercase font-black tracking-widest truncate">ROI Proyectado</span>
                         </div>
                         <span className="text-xl font-black text-foreground">+{auto.roi_projection}%</span>
                       </div>
                       <div className="flex flex-col gap-1 text-right">
                         <div className="flex items-center gap-1.5 text-nav-text justify-end">
-                          <Clock className="w-3 h-3" />
-                          <span className="text-[7px] uppercase font-black tracking-widest">Ahorro Mensual</span>
+                          <Clock className="w-3 h-3 shrink-0" />
+                          <span className="text-[7px] uppercase font-black tracking-widest truncate">Ahorro Mensual</span>
                         </div>
                         <span className="text-xl font-black text-foreground">{auto.hours_saved_monthly}h</span>
                       </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-4 mt-8">
                       <button 
-                        onClick={() => toggleAutomation(auto.id)}
-                        className={`flex-1 py-3 rounded-xl text-[9px] uppercase font-black tracking-widest flex items-center justify-center gap-2 transition-all ${
+                        onClick={() => {
+                           if (auto.status === "active") {
+                              toggleAutomation(auto.id);
+                           } else {
+                              setSelectedAuto(auto);
+                              setIsSimulatorOpen(true);
+                           }
+                        }}
+                        className={`flex-1 py-3 px-5 rounded-xl text-[9px] uppercase font-black tracking-widest flex items-center justify-center gap-2 transition-all whitespace-nowrap ${
                           auto.status === "active" 
                           ? "bg-foreground/5 text-foreground hover:bg-erani-coral/10 hover:text-erani-coral" 
                           : "bg-erani-blue text-white shadow-lg shadow-erani-blue/20 hover:scale-[1.02]"
@@ -212,7 +256,7 @@ export default function MarketplacePage() {
                           </>
                         ) : (
                           <>
-                            <Play className="w-3 h-3 fill-current" /> Activar n8n
+                            <Play className="w-3 h-3 fill-current" /> Aplicar
                           </>
                         )}
                       </button>
@@ -233,52 +277,75 @@ export default function MarketplacePage() {
             </AnimatePresence>
 
             {/* n8n Status Card */}
-            <div className="glassmorphism p-6 flex flex-col gap-6 bg-gradient-to-br from-erani-blue/5 to-transparent border-erani-blue/10 min-h-[320px]">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-erani-blue/10 flex items-center justify-center border border-erani-blue/20">
-                  <Cpu className="w-5 h-5 text-erani-blue" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[8px] uppercase font-black tracking-widest text-erani-blue">n8n System Status</span>
-                  <span className="text-xs font-black text-foreground">ERANI Node Cluster v2</span>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {[
-                  { label: "Memory Usage", value: "240MB / 1GB", progress: 24 },
-                  { label: "CPU Load", value: "12%", progress: 12 },
-                  { label: "Webhook Latency", value: "45ms", progress: 5 }
-                ].map((stat, i) => (
-                  <div key={i} className="flex flex-col gap-2">
-                    <div className="flex justify-between text-[7px] uppercase font-black tracking-widest">
-                      <span className="text-nav-text">{stat.label}</span>
-                      <span className="text-foreground">{stat.value}</span>
-                    </div>
-                    <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${stat.progress}%` }}
-                        className="h-full bg-erani-blue"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-auto p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-between">
+            <div className="relative col-span-full">
+              <div className={`glassmorphism p-8 flex flex-col gap-6 bg-gradient-to-br from-erani-blue/5 to-transparent border-erani-blue/10 min-h-[320px] h-full ${isTrial ? 'blur-md' : ''}`}>
                 <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]" />
-                  <span className="text-[8px] uppercase font-black tracking-widest text-emerald-500">Todo el sistema nominal</span>
+                  <div className="w-10 h-10 rounded-2xl bg-erani-blue/10 flex items-center justify-center border border-erani-blue/20">
+                    <Cpu className="w-5 h-5 text-erani-blue" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[8px] uppercase font-black tracking-widest text-erani-blue">n8n System Status</span>
+                    <span className="text-xs font-black text-foreground">ERANI Node Cluster v2</span>
+                  </div>
                 </div>
-                <ArrowUpRight className="w-3 h-3 text-emerald-500" />
+
+                <div className="space-y-4">
+                  {[
+                    { label: "Memory Usage", value: "240MB / 1GB", progress: 24 },
+                    { label: "CPU Load", value: "12%", progress: 12 },
+                    { label: "Webhook Latency", value: "45ms", progress: 5 }
+                  ].map((stat, i) => (
+                    <div key={i} className="flex flex-col gap-2">
+                      <div className="flex justify-between text-[7px] uppercase font-black tracking-widest">
+                        <span className="text-nav-text">{stat.label}</span>
+                        <span className="text-foreground">{stat.value}</span>
+                      </div>
+                      <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${stat.progress}%` }}
+                          className="h-full bg-erani-blue"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-auto p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]" />
+                    <span className="text-[8px] uppercase font-black tracking-widest text-emerald-500">Todo el sistema nominal</span>
+                  </div>
+                  <ArrowUpRight className="w-3 h-3 text-emerald-500" />
+                </div>
+
+                <button className="button-premium w-full py-4 rounded-xl text-[9px] uppercase font-black tracking-widest flex items-center justify-center gap-2">
+                  Open n8n Interface <ExternalLink className="w-3 h-3" />
+                </button>
               </div>
 
-              <button className="button-premium w-full py-4 rounded-xl text-[9px] uppercase font-black tracking-widest flex items-center justify-center gap-2">
-                Open n8n Interface <ExternalLink className="w-3 h-3" />
-              </button>
+              {isTrial && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 bg-background/20 rounded-3xl">
+                   <div className="p-6 rounded-3xl bg-background/80 border border-glass-border backdrop-blur-xl flex flex-col items-center text-center w-full shadow-2xl">
+                      <div className="w-16 h-16 bg-erani-blue/10 border border-erani-blue/20 rounded-2xl flex items-center justify-center mb-4">
+                         <img src="/isologo.png" alt="ERANI" className="w-8 h-8 object-contain animate-pulse" />
+                      </div>
+                      <h3 className="text-lg font-black uppercase tracking-tight text-foreground mb-2">Servicio Exclusivo</h3>
+                      <p className="text-xs text-nav-text mb-6">
+                        La ingeniería forense de automatizaciones está reservada para cuentas en fase BETA o PRO.
+                      </p>
+                      <button 
+                        onClick={() => router.push('/checkout')} 
+                        className="button-premium w-full py-3 rounded-xl text-[9px] uppercase font-black tracking-widest"
+                      >
+                        Hacer Upgrade
+                      </button>
+                   </div>
+                </div>
+              )}
             </div>
           </div>
+        </div>
 
           {/* Bottom Call to Action */}
           <div className="glassmorphism p-10 mt-8 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 border-erani-purple/20 bg-gradient-to-r from-erani-purple/5 via-transparent to-erani-blue/5">
@@ -290,7 +357,10 @@ export default function MarketplacePage() {
                   Nuestro equipo de ingeniería forense puede diseñar automatizaciones específicas para tu agencia, integrando modelos de IA propietarios y conectores directos a tu stack financiero.
                 </p>
              </div>
-             <button className="button-premium px-10 py-5 rounded-2xl text-[10px] uppercase font-black tracking-[0.2em] hover:scale-105 transition-transform shrink-0 whitespace-nowrap">
+             <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="button-premium px-10 py-5 rounded-2xl text-[10px] uppercase font-black tracking-[0.2em] hover:scale-105 transition-transform shrink-0 whitespace-nowrap"
+             >
                 Solicitar Ingeniería de Flujo
              </button>
              
@@ -301,6 +371,24 @@ export default function MarketplacePage() {
 
         </div>
       </main>
+
+      {/* Modals & Sidebars */}
+      <AutomationSimulatorModal 
+        isOpen={isSimulatorOpen} 
+        onClose={() => setIsSimulatorOpen(false)} 
+        automation={selectedAuto}
+        onApply={() => {
+           if (selectedAuto) {
+              toggleAutomation(selectedAuto.id);
+           }
+           setIsSimulatorOpen(false);
+        }}
+      />
+      <CustomFlowSidebar 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
+        automations={automations} 
+      />
     </div>
   );
 }

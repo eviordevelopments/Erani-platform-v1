@@ -56,9 +56,13 @@ export default function Navigation() {
             Ingresar
           </Link>
           
-          <button className="button-premium px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-white hover:scale-105 active:scale-95 transition-transform">
-            Agendar Peritaje
-          </button>
+          {/* Req 9.4 — Demo Personalizada → /onboarding */}
+          <Link
+            href="/onboarding"
+            className="button-premium px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-white hover:scale-105 active:scale-95 transition-transform"
+          >
+            Demo Personalizada
+          </Link>
 
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
