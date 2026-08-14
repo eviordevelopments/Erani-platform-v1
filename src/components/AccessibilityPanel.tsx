@@ -37,7 +37,7 @@ export default function AccessibilityPanel() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsPanelOpen(false)}
-            className="fixed inset-0 z-50 bg-background/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[10000] bg-background/40 backdrop-blur-sm"
           />
 
           {/* Panel */}
@@ -46,7 +46,7 @@ export default function AccessibilityPanel() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[90vw] max-w-md bg-card/95 border border-glass-border p-6 rounded-3xl shadow-[0_0_50px_rgba(158,128,255,0.15)] flex flex-col gap-6"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] w-[90vw] max-w-md bg-card/95 border border-glass-border p-6 rounded-3xl shadow-[0_0_50px_rgba(158,128,255,0.15)] flex flex-col gap-6"
           >
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold flex items-center gap-2">
