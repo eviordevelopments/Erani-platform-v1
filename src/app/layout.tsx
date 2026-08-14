@@ -27,7 +27,6 @@ import IdleTimer from "@/components/IdleTimer";
 import SupportWidget from "@/components/SupportWidget";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import AccessibilityPanel from "@/components/AccessibilityPanel";
-import AccessibilityFloatingWidget from "@/components/AccessibilityFloatingWidget";
 
 export default function RootLayout({
   children,
@@ -54,7 +53,6 @@ export default function RootLayout({
               <SupportWidget />
               <FeedbackWidget />
               <AccessibilityPanel />
-              <AccessibilityFloatingWidget />
             </DashboardProvider>
           </AuthProvider>
         </ThemeProvider>

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mail, Key, ArrowRight, Loader2, AlertCircle, Sun, Moon, Eye, EyeOff } from "lucide-react";
+import { Loader2, Mail, Key, ArrowRight, Eye, EyeOff, AlertCircle } from "lucide-react";
+import TopRightActions from "@/components/TopRightActions";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -75,15 +76,8 @@ export default function Login() {
       {/* Top color bar */}
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-erani-blue via-erani-purple to-erani-coral" />
 
-      {/* Theme toggle */}
-      <div className="absolute top-6 right-6 z-50">
-        <button
-          onClick={toggleTheme}
-          className="p-3 rounded-2xl glassmorphism border border-white/10 text-gray-400 hover:text-erani-blue transition-all active:scale-95"
-        >
-          {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
-      </div>
+      {/* Theme toggle & Accessibility */}
+      <TopRightActions />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}

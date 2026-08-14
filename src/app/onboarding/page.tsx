@@ -39,7 +39,7 @@ import Image from "next/image";
 import Link from "next/link";
 import confetti from "canvas-confetti";
 import { useTheme } from "@/context/ThemeContext";
-import { Sun, Moon } from "lucide-react";
+import TopRightActions from "@/components/TopRightActions";
 import { useAuth } from "@/context/AuthContext";
 // supabase client — used in tasks 6.2, 6.4, 6.5
 import { supabase } from "@/lib/supabaseClient";
@@ -580,15 +580,8 @@ export default function Onboarding() {
         </div>
       )}
 
-      {/* Theme Toggle */}
-      <div className="absolute top-8 right-8 z-50">
-          <button 
-            onClick={toggleTheme}
-            className="p-3 rounded-2xl glassmorphism border border-white/10 dark:border-white/5 text-gray-500 hover:text-erani-blue transition-all active:scale-95 shadow-xl"
-          >
-            {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
-      </div>
+      {/* Theme Toggle & Accessibility */}
+      <TopRightActions />
 
       {/* Animated Flowing Background for success */}
       <AnimatePresence>

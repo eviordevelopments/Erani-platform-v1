@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
+import { User, Mail, Lock, Building2, UserCircle2, ArrowRight, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff, LogIn } from "lucide-react";
+import TopRightActions from "@/components/TopRightActions";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -148,16 +149,8 @@ export default function Register() {
       <div className="absolute -bottom-40 -left-20 w-[600px] h-[600px] rounded-full bg-erani-blue/8 blur-[160px] pointer-events-none" />
       <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-[350px] h-[350px] rounded-full bg-erani-purple/10 blur-[120px] pointer-events-none" />
 
-      {/* Theme Toggle */}
-      <div className="absolute top-8 right-8 z-50">
-        <button
-          onClick={toggleTheme}
-          className="p-3 rounded-2xl glassmorphism border border-white/10 dark:border-white/5 text-gray-500 hover:text-erani-blue transition-all active:scale-95 shadow-xl"
-          aria-label="Cambiar tema"
-        >
-          {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
-      </div>
+      {/* Theme Toggle & Accessibility */}
+      <TopRightActions />
 
       {/* Animated background for success state */}
       <AnimatePresence>

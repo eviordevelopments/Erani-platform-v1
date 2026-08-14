@@ -366,35 +366,34 @@ export default function Sidebar() {
           </AnimatePresence>
         </div>
 
-        {/* Theme Toggle */}
-        <div className="flex items-center justify-center pt-2">
+        {/* Settings Toggles Row */}
+        <div className="flex items-center justify-center pt-2 gap-2">
+          {/* Theme Toggle */}
           <button 
              onClick={toggleTheme}
-             className={`w-full flex items-center justify-center h-10 rounded-xl transition-all ${
-               isCollapsed ? "w-10" : "gap-3 px-4 hover:bg-foreground/5"
+             className={`flex items-center justify-center h-10 rounded-xl transition-all ${
+               isCollapsed ? "w-10" : "flex-1 hover:bg-foreground/5"
              } text-nav-text hover:text-erani-blue`}
-             title="Toggle Theme"
+             title="Cambiar Tema"
           >
             {mounted ? (
               theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />
             ) : (
-              <div className="w-4 h-4" /> // Placeholder to avoid mismatch
+              <div className="w-4 h-4" />
             )}
-            {!isCollapsed && <span className="text-[8px] uppercase font-black tracking-widest">Cambiar Tema</span>}
+            {!isCollapsed && <span className="ml-2 text-[8px] uppercase font-black tracking-widest">Tema</span>}
           </button>
-        </div>
 
-        {/* Accessibility Toggle */}
-        <div className="flex items-center justify-center pt-1 pb-1">
+          {/* Accessibility Toggle */}
           <button 
              onClick={() => setIsPanelOpen(true)}
-             className={`w-full flex items-center justify-center h-10 rounded-xl transition-all ${
-               isCollapsed ? "w-10" : "gap-3 px-4 hover:bg-foreground/5"
+             className={`flex items-center justify-center h-10 rounded-xl transition-all ${
+               isCollapsed ? "w-10" : "flex-1 hover:bg-foreground/5"
              } text-nav-text hover:text-erani-purple`}
              title="Accesibilidad"
           >
             <Accessibility className="w-4 h-4" />
-            {!isCollapsed && <span className="text-[8px] uppercase font-black tracking-widest">Accesibilidad</span>}
+            {!isCollapsed && <span className="ml-2 text-[8px] uppercase font-black tracking-widest">Acceso</span>}
           </button>
         </div>
       </div>

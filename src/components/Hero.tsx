@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import InAppTour from "@/components/InAppTour";
+import TopRightActions from "@/components/TopRightActions";
 import { useTheme } from "@/context/ThemeContext";
 
 // ── Animated counter hook ────────────────────────────────────────────────────
@@ -87,16 +88,8 @@ export default function Hero() {
       className="fixed inset-0 flex items-center justify-center overflow-hidden bg-background"
       style={{ paddingBottom: "2.5rem" }}
     >
-      {/* ── Theme Toggle ── */}
-      <div className="absolute top-8 right-8 z-50">
-        <button
-          onClick={toggleTheme}
-          className="p-3 rounded-2xl glassmorphism border border-white/10 dark:border-white/5 text-nav-text hover:text-foreground transition-all active:scale-95 shadow-xl"
-          aria-label="Cambiar tema"
-        >
-          {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
-      </div>
+      {/* ── Theme Toggle & Accessibility ── */}
+      <TopRightActions />
 
       {/* ── Background ambient glows ── */}
       <div className="absolute -top-40 -right-40 w-[800px] h-[800px] rounded-full bg-erani-purple/18 blur-[200px] pointer-events-none" />
