@@ -25,6 +25,28 @@
   --card-shadow: 0 8px 32px 0 rgba(15, 23, 42, 0.08);
 }
 
+.high-contrast {
+  --background: #000000;
+  --foreground: #FFFFFF;
+  --card-bg: #000000;
+  --glass-border: #FFFFFF;
+  --nav-text: #FFFFFF;
+  --accent-blue: #3b82f6;
+  --accent-purple: #a855f7;
+  --accent-coral: #ef4444;
+}
+
+.light.high-contrast {
+  --background: #FFFFFF;
+  --foreground: #000000;
+  --card-bg: #FFFFFF;
+  --glass-border: #000000;
+  --nav-text: #000000;
+  --accent-blue: #1d4ed8;
+  --accent-purple: #7e22ce;
+  --accent-coral: #b91c1c;
+}
+
 html {
   font-size: var(--platform-font-size, 16px);
 }

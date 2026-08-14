@@ -181,7 +181,7 @@ async function inviteMembers(payload: InviteMembersPayload): Promise<NextRespons
   if (error) return handleDbError(error)
 
   // Send invitation emails via Supabase Auth
-  const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const siteUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000' ? process.env.NEXT_PUBLIC_APP_URL : 'https://platform.erani.mx'
   const inviteResults = await Promise.allSettled(
     members.map((m) =>
       supabaseAdmin.auth.admin.inviteUserByEmail(m.email, {
@@ -308,7 +308,10 @@ async function registerAdminWithEmail(payload: CreateAdminAccountPayload): Promi
 
   const { data: signUpData, error: signUpError } = await supabaseAnon.auth.signUp({ 
     email, 
-    password 
+    password,
+    options: {
+      emailRedirectTo: 'https://platform.erani.mx/login'
+    }
   })
 
   if (signUpError) {
@@ -684,7 +687,7 @@ async function sendReferralInvite(payload: SendReferralInvitePayload): Promise<N
   }
 
   // 3. Send email using Supabase Auth invite
-  const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const siteUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000' ? process.env.NEXT_PUBLIC_APP_URL : 'https://platform.erani.mx'
   const redirectUrl = `${siteUrl}/register?ref=${codeStr}`
 
   const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {

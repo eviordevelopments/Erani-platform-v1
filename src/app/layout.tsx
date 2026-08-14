@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { DashboardProvider } from "@/context/DashboardContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { AccessibilityProvider } from "@/context/AccessibilityContext";
 import Script from "next/script";
 
 const montserrat = Montserrat({
@@ -25,6 +26,8 @@ export const metadata: Metadata = {
 import IdleTimer from "@/components/IdleTimer";
 import SupportWidget from "@/components/SupportWidget";
 import FeedbackWidget from "@/components/FeedbackWidget";
+import AccessibilityPanel from "@/components/AccessibilityPanel";
+import AccessibilityFloatingWidget from "@/components/AccessibilityFloatingWidget";
 
 export default function RootLayout({
   children,
@@ -37,10 +40,11 @@ export default function RootLayout({
       className={`${montserrat.variable} h-full antialiased font-sans`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground transition-colors duration-300">
-        <ThemeProvider>
-          <AuthProvider>
-            <DashboardProvider>
-              <IdleTimer />
+        <AccessibilityProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <DashboardProvider>
+                <IdleTimer />
               {/* Background Blobs */}
               <div className="bg-blob-purple w-[600px] h-[600px] -top-40 -right-40" />
               <div className="bg-blob-blue w-[500px] h-[500px] -bottom-20 -left-20" />
@@ -49,9 +53,12 @@ export default function RootLayout({
               {children}
               <SupportWidget />
               <FeedbackWidget />
+              <AccessibilityPanel />
+              <AccessibilityFloatingWidget />
             </DashboardProvider>
           </AuthProvider>
         </ThemeProvider>
+      </AccessibilityProvider>
         <Script src="https://assets.calendly.com/assets/external/widget.js" strategy="lazyOnload" />
       </body>
     </html>

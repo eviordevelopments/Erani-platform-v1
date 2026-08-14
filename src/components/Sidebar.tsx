@@ -30,7 +30,8 @@ import { useTheme } from "@/context/ThemeContext";
 import { useDashboard } from "@/context/DashboardContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Accessibility } from "lucide-react";
+import { useAccessibility } from "@/context/AccessibilityContext";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard Forense", href: "/dashboard" },
@@ -50,6 +51,7 @@ export default function Sidebar() {
   const router = useRouter();
   const { isSidebarCollapsed: isCollapsed, setIsSidebarCollapsed: setIsCollapsed, storageStats } = useDashboard();
   const { theme, toggleTheme } = useTheme();
+  const { setIsPanelOpen } = useAccessibility();
   const { profile, org, signOut } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -379,6 +381,20 @@ export default function Sidebar() {
               <div className="w-4 h-4" /> // Placeholder to avoid mismatch
             )}
             {!isCollapsed && <span className="text-[8px] uppercase font-black tracking-widest">Cambiar Tema</span>}
+          </button>
+        </div>
+
+        {/* Accessibility Toggle */}
+        <div className="flex items-center justify-center pt-1 pb-1">
+          <button 
+             onClick={() => setIsPanelOpen(true)}
+             className={`w-full flex items-center justify-center h-10 rounded-xl transition-all ${
+               isCollapsed ? "w-10" : "gap-3 px-4 hover:bg-foreground/5"
+             } text-nav-text hover:text-erani-purple`}
+             title="Accesibilidad"
+          >
+            <Accessibility className="w-4 h-4" />
+            {!isCollapsed && <span className="text-[8px] uppercase font-black tracking-widest">Accesibilidad</span>}
           </button>
         </div>
       </div>
