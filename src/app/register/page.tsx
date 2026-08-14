@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Mail, Lock, Building2, UserCircle2, ArrowRight, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff, LogIn } from "lucide-react";
+import { User, Mail, Lock, Building2, UserCircle2, ArrowRight, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
 import TopRightActions from "@/components/TopRightActions";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
